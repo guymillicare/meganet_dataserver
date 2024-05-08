@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package proto;
+
+// Specify the Go package where the generated Go code should reside.
+option go_package = "internal/proto";
+
+// The sportsbook service definition.
+service SportsbookService {
+    // Sends a request to list all permatches available
+    rpc ListPrematch (ListPrematchRequest) returns (ListPrematchResponse);
+}
+
+// The request message containing the information needed to list games.
+message ListPrematchRequest {
+    // You can add filters or pagination details here if needed
+}
+
+// The response message containing the list of games.
+message ListPrematchResponse {
+    repeated Prematch data = 1;
+}
+
+// A Prematch message represents a game in the sportsbook.
+message Prematch {
+    string id = 1;
+    string start_date = 2;
+    string home_team = 3;
+    string away_team = 4;
+    bool is_live = 5;
+    bool is_popular = 6;
+    string tournament = 7;
+    string status = 8;
+    string sport = 9;
+    string league = 10;
+    repeated Odds odds = 11;
+}
+
+message Odds {
+    string id = 1;
+    string sports_book_name = 2;
+    string name = 3;
+    double price = 4;
+    double timestamp = 5;
+    double bet_points = 6;
+    bool is_main = 7;
+    bool is_live = 8;
+    string market_name = 9;
+    string market = 10;
+    double home_rotation_number = 11;
+    double away_rotation_number = 12;
+    string deep_link_url = 13;
+    string player_id = 14;
+    string selection = 15;
+    string normalized_selection = 16;
+    string selection_line = 17;
+    double selection_points = 18;
+}
