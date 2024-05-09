@@ -13,7 +13,7 @@ func CreateCompetitor(prematch *proto.Prematch) (*types.CompetitorItem, error) {
 	homeCompetitor, _ := CompetitorFindByName(prematch.HomeTeam)
 	if homeCompetitor == nil {
 		competitor.Name = prematch.HomeTeam
-		competitor.SportId, _ = GetSportId(prematch.Sport)
+		competitor.SportId, _ = GetSportRefId(prematch.Sport)
 		if err := database.DB.Table("competitors").Create(&competitor).Error; err != nil {
 			return competitor, fmt.Errorf("CompetitorCreate: %v", err)
 		}
@@ -22,7 +22,7 @@ func CreateCompetitor(prematch *proto.Prematch) (*types.CompetitorItem, error) {
 	awayCompetitor, _ := CompetitorFindByName(prematch.HomeTeam)
 	if awayCompetitor == nil {
 		competitor.Name = prematch.AwayTeam
-		competitor.SportId, _ = GetSportId(prematch.Sport)
+		competitor.SportId, _ = GetSportRefId(prematch.Sport)
 		if err := database.DB.Table("competitors").Create(&competitor).Error; err != nil {
 			return competitor, fmt.Errorf("CompetitorCreate: %v", err)
 		}

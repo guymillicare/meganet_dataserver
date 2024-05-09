@@ -21,11 +21,20 @@ func SportsPreload() {
 	database.SPORTS, _ = SportsFindAll()
 }
 
-func GetSportId(name string) (string, error) {
+func GetSportRefId(name string) (string, error) {
 	for _, sport := range database.SPORTS {
 		if sport.Slug == name {
 			return sport.ReferenceId, nil
 		}
 	}
 	return "0", fmt.Errorf("Sport not found")
+}
+
+func GetSportId(name string) (int32, error) {
+	for _, sport := range database.SPORTS {
+		if sport.Slug == name {
+			return sport.Id, nil
+		}
+	}
+	return 0, fmt.Errorf("Sport not found")
 }

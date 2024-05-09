@@ -73,7 +73,7 @@ type MarketOutcomeItem struct {
 	MarketDescription string `json:"market_description"`
 	OutcomeRefId      string `json:"outcome_ref_id"`
 	OutcomeName       string `json:"outcome_name"`
-	Sports            string `json:"sports"`
+	SportRefId        string `json:"sport_ref_id"`
 	Order             int32  `json:"order"`
 }
 
@@ -84,8 +84,27 @@ type MarketConstantItem struct {
 }
 
 type OutcomeConstantItem struct {
-	Id          int32  `json:"id"`
+	Id          int    `json:"id"`
 	ReferenceId string `json:"reference_id"`
 	Name        string `json:"name"`
-	Order       int32  `json:"order"`
+	Order       int    `json:"order"`
+}
+
+type SportMarketGroupItem struct {
+	Id         int32  `json:"id"`
+	SportId    int32  `json:"sport_id"`
+	MarketId   int32  `json:"market_id"`
+	SportName  string `json:"sport_name"`
+	MarketName string `json:"market_name"`
+}
+
+type OutcomeItem struct {
+	Id          int32     `json:"id"`
+	ReferenceId string    `json:"reference_id"`
+	EventId     int32     `json:"event_id"`
+	MarketId    int32     `json:"market_id"`
+	Name        string    `json:"name"`
+	Odds        float64   `json:"odds"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

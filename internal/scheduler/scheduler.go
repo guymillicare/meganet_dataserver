@@ -9,8 +9,8 @@ import (
 )
 
 // StartCronJob sets up and starts a cron job to fetch games data periodically.
-func StartCronJob(client *client.GamesClient, prematchData *grpc.PrematchData, spec string) {
-	c := cron.New(cron.WithSeconds())
+func StartPrematchCronJob(client *client.GamesClient, prematchData *grpc.PrematchData, spec string) {
+	c := cron.New()
 	_, err := c.AddFunc(spec, func() {
 		log.Println("Fetching games data...")
 
@@ -32,10 +32,4 @@ func StartCronJob(client *client.GamesClient, prematchData *grpc.PrematchData, s
 
 	// Start the cron scheduler.
 	c.Start()
-
-	// Optionally, you can handle graceful shutdown:
-	// sig := make(chan os.Signal, 1)
-	// signal.Notify(sig, os.Interrupt)
-	// <-sig
-	// c.Stop()
 }

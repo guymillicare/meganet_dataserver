@@ -6,13 +6,13 @@ import (
 	"sportsbook-backend/internal/types"
 )
 
-func GetMarketReferenceId(description string) (string, error) {
+func GetMarketConstant(description string) (*types.MarketConstantItem, error) {
 	var marketConstant *types.MarketConstantItem
 	if err := database.DB.Table("market_constants").Where("description =?", description).First(&marketConstant).Error; err != nil {
 		if err.Error() == "record not found" {
-			return "", nil
+			return nil, nil
 		}
-		return marketConstant.ReferenceId, fmt.Errorf("FindById: %v", err)
+		return marketConstant, fmt.Errorf("FindById: %v", err)
 	}
-	return marketConstant.ReferenceId, nil
+	return marketConstant, nil
 }

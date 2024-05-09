@@ -14,7 +14,7 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 	if sportEvent == nil {
 		newSportEvent.ProviderId = 1
 		newSportEvent.ReferenceId = prematch.Id
-		newSportEvent.SportId, _ = GetSportId(prematch.Sport)
+		newSportEvent.SportId, _ = GetSportRefId(prematch.Sport)
 		if prematch.League != "" {
 			country := strings.Split(prematch.League, " - ")[0]
 			tournament := strings.Split(prematch.League, " - ")[0]
@@ -30,8 +30,9 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 		if err := database.DB.Table("sport_events").Create(&newSportEvent).Error; err != nil {
 			return newSportEvent, fmt.Errorf("CreateSportEvent: %v", err)
 		}
+		return newSportEvent, nil
 	}
-	return newSportEvent, nil
+	return sportEvent, nil
 }
 
 func SportEventFindByReferenceId(id string) (*types.SportEventItem, error) {
