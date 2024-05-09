@@ -17,8 +17,8 @@ func main() {
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
 
 	// Start the scheduler to fetch games data periodically
-	prematchData := &grpc.PrematchData{}                              // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartCronJob(gamesClient, prematchData, "*/20 * * * *") // Runs every hour
+	prematchData := &grpc.PrematchData{}                                      // assuming grpc.GamesData is a thread-safe struct
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "*/20 * * * *") // Runs every hour
 
 	// Start the gRPC server
 	grpc.StartGRPCServer(cfg.GRPCPort, prematchData)
