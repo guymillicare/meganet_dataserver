@@ -31,8 +31,14 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 			return newSportEvent, fmt.Errorf("CreateSportEvent: %v", err)
 		}
 		return newSportEvent, nil
+	} else {
+		sportEvent.StartAt = prematch.StartDate
+		sportEvent.Status = prematch.Status
+		if err := database.DB.Table("sport_events").Save(&sportEvent).Error; err != nil {
+			return sportEvent, fmt.Errorf("UpdateSportEvent: %v", err)
+		}
+		return sportEvent, nil
 	}
-	return sportEvent, nil
 }
 
 func SportEventFindByReferenceId(id string) (*types.SportEventItem, error) {

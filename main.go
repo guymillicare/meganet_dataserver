@@ -6,6 +6,7 @@ import (
 	"sportsbook-backend/internal/grpc"
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/scheduler"
+	"sportsbook-backend/internal/websockets"
 	"sportsbook-backend/pkg/client"
 )
 
@@ -17,9 +18,11 @@ func main() {
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
 
 	// Start the scheduler to fetch games data periodically
-	prematchData := &grpc.PrematchData{}                                      // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartPrematchCronJob(gamesClient, prematchData, "*/20 * * * *") // Runs every hour
+	prematchData := &grpc.PrematchData{}                                        // assuming grpc.GamesData is a thread-safe struct
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "0 */3 * * *")    // Runs every 3 hours
+	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
+	websockets.StartWebSocket()
 	// Start the gRPC server
 	grpc.StartGRPCServer(cfg.GRPCPort, prematchData)
 }

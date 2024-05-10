@@ -108,3 +108,26 @@ type OutcomeItem struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+type OddsStream struct {
+	Data []struct {
+		BetName         string  `json:"bet_name"`
+		BetPoints       float32 `json:"bet_points"`
+		BetPrice        float32 `json:"bet_price"`
+		BetType         string  `json:"bet_type"`
+		GameID          string  `json:"game_id"`
+		ID              string  `json:"id"`
+		IsLive          bool    `json:"is_live"`
+		IsMain          bool    `json:"is_main"`
+		League          string  `json:"league"`
+		PlayerId        string  `json:"player_id"`
+		Selection       string  `json:"selection"`
+		SelectionLine   string  `json:"selection_line"`
+		SelectionPoints float32 `json:"selection_points"`
+		Sport           string  `json:"sport"`
+		Sportsbook      string  `json:"sportsbook"`
+		Timestamp       float32 `json:"timestamp"`
+	} `json:"data"`
+	EntryId string `json:"entry_id"`
+	Type    string `json:"type"`
+}

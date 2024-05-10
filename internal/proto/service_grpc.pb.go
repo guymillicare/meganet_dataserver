@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	SportsbookService_ListPrematch_FullMethodName = "/proto.SportsbookService/ListPrematch"
+	SportsbookService_SendLiveOdds_FullMethodName = "/proto.SportsbookService/SendLiveOdds"
 )
 
 // SportsbookServiceClient is the client API for SportsbookService service.
@@ -28,6 +29,7 @@ const (
 type SportsbookServiceClient interface {
 	// Sends a request to list all permatches available
 	ListPrematch(ctx context.Context, in *ListPrematchRequest, opts ...grpc.CallOption) (*ListPrematchResponse, error)
+	SendLiveOdds(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveOddsClient, error)
 }
 
 type sportsbookServiceClient struct {
@@ -47,12 +49,45 @@ func (c *sportsbookServiceClient) ListPrematch(ctx context.Context, in *ListPrem
 	return out, nil
 }
 
+func (c *sportsbookServiceClient) SendLiveOdds(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveOddsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SportsbookService_ServiceDesc.Streams[0], SportsbookService_SendLiveOdds_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sportsbookServiceSendLiveOddsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SportsbookService_SendLiveOddsClient interface {
+	Recv() (*LiveOddsData, error)
+	grpc.ClientStream
+}
+
+type sportsbookServiceSendLiveOddsClient struct {
+	grpc.ClientStream
+}
+
+func (x *sportsbookServiceSendLiveOddsClient) Recv() (*LiveOddsData, error) {
+	m := new(LiveOddsData)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // SportsbookServiceServer is the server API for SportsbookService service.
 // All implementations must embed UnimplementedSportsbookServiceServer
 // for forward compatibility
 type SportsbookServiceServer interface {
 	// Sends a request to list all permatches available
 	ListPrematch(context.Context, *ListPrematchRequest) (*ListPrematchResponse, error)
+	SendLiveOdds(*LiveOddsRequest, SportsbookService_SendLiveOddsServer) error
 	mustEmbedUnimplementedSportsbookServiceServer()
 }
 
@@ -62,6 +97,9 @@ type UnimplementedSportsbookServiceServer struct {
 
 func (UnimplementedSportsbookServiceServer) ListPrematch(context.Context, *ListPrematchRequest) (*ListPrematchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPrematch not implemented")
+}
+func (UnimplementedSportsbookServiceServer) SendLiveOdds(*LiveOddsRequest, SportsbookService_SendLiveOddsServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendLiveOdds not implemented")
 }
 func (UnimplementedSportsbookServiceServer) mustEmbedUnimplementedSportsbookServiceServer() {}
 
@@ -94,6 +132,27 @@ func _SportsbookService_ListPrematch_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SportsbookService_SendLiveOdds_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(LiveOddsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SportsbookServiceServer).SendLiveOdds(m, &sportsbookServiceSendLiveOddsServer{stream})
+}
+
+type SportsbookService_SendLiveOddsServer interface {
+	Send(*LiveOddsData) error
+	grpc.ServerStream
+}
+
+type sportsbookServiceSendLiveOddsServer struct {
+	grpc.ServerStream
+}
+
+func (x *sportsbookServiceSendLiveOddsServer) Send(m *LiveOddsData) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // SportsbookService_ServiceDesc is the grpc.ServiceDesc for SportsbookService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -106,6 +165,12 @@ var SportsbookService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SportsbookService_ListPrematch_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SendLiveOdds",
+			Handler:       _SportsbookService_SendLiveOdds_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "internal/proto/service.proto",
 }

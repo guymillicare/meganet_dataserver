@@ -111,3 +111,29 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 	}
 	return &responses, nil
 }
+
+func (gc *GamesClient) FetchStatus() (*proto.ListPrematchResponse, error) {
+	var responses proto.ListPrematchResponse
+	for _, sport := range database.SPORTS {
+		url := fmt.Sprintf(
+			"%s/api/v2/games?key=%s&sport=%s",
+			gc.BaseURL,
+			gc.APIKey,
+			sport.Slug,
+		)
+		resp, err := http.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		var gameListResponse proto.ListPrematchResponse
+		if err := json.NewDecoder(resp.Body).Decode(&gameListResponse); err != nil {
+			return nil, err
+		}
+		for _, prematch := range gameListResponse.Data {
+			repositories.CreateSportEvent(prematch)
+		}
+	}
+	return &responses, nil
+}
