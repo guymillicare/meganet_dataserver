@@ -6,12 +6,15 @@ import (
 	"sportsbook-backend/internal/config"
 	"sportsbook-backend/internal/types"
 
+	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
+
+var RedisDB *redis.Client
 
 var SPORTS []*types.SportItem
 var COUNTRIES []*types.CountryItem
@@ -27,4 +30,12 @@ func InitPostgresDB(cfg *config.Config) {
 		log.Fatalf("failed to connect database %v:\n", err)
 	}
 	DB = db
+}
+
+func InitRedis() {
+	RedisDB = redis.NewClient(&redis.Options{
+		Addr:     "51.159.19.90:6379", // Redis server address
+		Password: "",                  // no password set
+		DB:       0,                   // use default DB
+	})
 }

@@ -63,7 +63,7 @@ message LiveOddsRequest {
 }
 
 message LiveOddsData {
-    repeated Data data= 1;
+    Data data= 1;
     string entry_id = 2;
     string type = 3;
 }
@@ -81,7 +81,7 @@ message Data {
     string player_id = 10;
     string selection = 11;
     string selection_line = 12;
-    string selection_points = 13;
+    double selection_points = 13;
     string sport = 14;
     string sportsbook = 15;
     double timestamp = 16;
