@@ -1,16 +1,20 @@
 package repositories
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/types"
 	"strings"
+
+	"github.com/go-redis/redis"
 )
 
 func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 	newSportEvent := &types.SportEventItem{}
-	sportEvent, _ := SportEventFindByReferenceId(prematch.Id)
+	sportEvent, _ := GetSportEventFromRedis(prematch.Id)
 	if sportEvent == nil {
 		newSportEvent.ProviderId = 1
 		newSportEvent.ReferenceId = prematch.Id
@@ -42,15 +46,75 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 		}
 		return sportEvent, nil
 	}
+
+	// Save the updated or newly created sport event to Redis
+	ctx := context.Background()
+	if err := saveSportEventToRedis(ctx, sportEvent); err != nil {
+		return sportEvent, fmt.Errorf("CreateOrUpdateSportEvent: error saving sport event to Redis: %v", err)
+	}
+	return sportEvent, nil
 }
 
-func SportEventFindByReferenceId(id string) (*types.SportEventItem, error) {
-	var sportEvent *types.SportEventItem
-	if err := database.DB.Table("sport_events").Where("reference_id =?", id).First(&sportEvent).Error; err != nil {
+func SportEventsFindAll() ([]*types.SportEventItem, error) {
+	var sportEvent []*types.SportEventItem
+	if err := database.DB.Table("sport_events").Find(&sportEvent).Error; err != nil {
 		if err.Error() == "record not found" {
 			return nil, nil
 		}
-		return sportEvent, fmt.Errorf("FindById: %v", err)
+		return sportEvent, fmt.Errorf("SportEventsFindAll: %v", err)
 	}
+
 	return sportEvent, nil
+
+}
+
+func saveSportEventToRedis(ctx context.Context, sportEvent *types.SportEventItem) error {
+	sportEventJSON, err := json.Marshal(sportEvent)
+	if err != nil {
+		return fmt.Errorf("saveSportEventToRedis: error marshaling sportEvent: %v", err)
+	}
+
+	key := fmt.Sprintf("sportEvent:%s", sportEvent.ReferenceId)
+
+	err = database.RedisDB.Set(ctx, key, sportEventJSON, 0).Err()
+	if err != nil {
+		return fmt.Errorf("saveSportEventToRedis: error saving sportEvent to Redis: %v", err)
+	}
+
+	return nil
+}
+
+func SportEventsPreload() {
+	sportEvents, _ := SportEventsFindAll()
+	ctx := context.Background()
+	for _, sportEvent := range sportEvents {
+		if err := saveSportEventToRedis(ctx, sportEvent); err != nil {
+			fmt.Printf("saveSportEventToRedis: error saving sportEvent to Redis: %v\n", err)
+			continue
+		}
+	}
+}
+
+func GetSportEventFromRedis(refId string) (*types.SportEventItem, error) {
+	// Construct the key for the sportEvent item
+	ctx := context.Background()
+	key := fmt.Sprintf("sportEvent:%s", refId)
+
+	// Retrieve the sportEvent item from Redis
+	sportEventJSON, err := database.RedisDB.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			// sportEvent item not found in Redis
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetSportEventFromRedis: error fetching sportEvent item from Redis: %v", err)
+	}
+
+	// Deserialize the sportEvent item from JSON
+	var sportEvent types.SportEventItem
+	if err := json.Unmarshal(sportEventJSON, &sportEvent); err != nil {
+		return nil, fmt.Errorf("GetSportEventFromRedis: error unmarshaling sportEvent item: %v", err)
+	}
+
+	return &sportEvent, nil
 }

@@ -34,29 +34,6 @@ func (s *server) ListPrematch(ctx context.Context, req *pb.ListPrematchRequest) 
 	return s.prematchData.GetPrematchData(), nil
 }
 
-// SendLiveOdds streams live odds data to clients.
-// func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveOddsServer) error {
-// 	ch := make(chan *pb.LiveOddsData, 10)
-// 	clientID := "unique-client-id" // Generate or manage client ID appropriately
-// 	s.lock.Lock()
-// 	s.clients[clientID] = ch
-// 	s.lock.Unlock()
-
-// 	defer func() {
-// 		s.lock.Lock()
-// 		delete(s.clients, clientID)
-// 		close(ch)
-// 		s.lock.Unlock()
-// 	}()
-
-// 	for data := range ch {
-// 		if err := stream.Send(data); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
-
 // BroadcastOddsData sends live odds to all connected clients.
 func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveOddsServer) error {
 	for oddsData := range s.oddsChannel {
@@ -135,16 +112,18 @@ func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.Wait
 			Timestamp:       oddsData.Data[0].Timestamp,
 		}
 
-		outcome = &types.OutcomeItem{
-			ReferenceId: outcomeConstant.ReferenceId,
+		sportEvent, _ := repositories.GetSportEventFromRedis(oddsData.Data[0].GameId)
+		marketConstant, _ := repositories.GetMarketConstantFromRedis(oddsData.Data[0].BetType)
+		outcome := &types.OutcomeItem{
+			ReferenceId: oddsData.Data[0].BetType + ":" + oddsData.Data[0].BetName,
 			EventId:     sportEvent.Id,
 			MarketId:    marketConstant.Id,
-			Name:        oddsName,
-			Odds:        odds.Price,
+			Name:        oddsData.Data[0].BetName,
+			Odds:        oddsData.Data[0].BetPrice,
+			Active:      oddsData.Type == "updated",
 			CreatedAt:   time.Now().UTC(),
 			UpdatedAt:   time.Now().UTC(),
 		}
-
 		repositories.SaveOutcomeToRedis(outcome)
 		convertedOddsData := &pb.LiveOddsData{
 			EntryId: oddsData.EntryId,
