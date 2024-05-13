@@ -13,13 +13,13 @@ import (
 )
 
 func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
-	newSportEvent := &types.SportEventItem{}
 	sportEvent, _ := GetSportEventFromRedis(prematch.Id)
 	if sportEvent == nil {
-		newSportEvent.ProviderId = 1
-		newSportEvent.ReferenceId = prematch.Id
+		sportEvent = &types.SportEventItem{}
+		sportEvent.ProviderId = 1
+		sportEvent.ReferenceId = prematch.Id
 		sport, _ := GetSportFromRedis(prematch.Sport)
-		newSportEvent.SportId = sport.ReferenceId
+		sportEvent.SportId = sport.ReferenceId
 		if prematch.League != "" {
 			country := strings.Split(prematch.League, " - ")[0]
 			tournament := strings.Split(prematch.League, " - ")[0]
@@ -27,24 +27,22 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 				tournament = strings.Split(prematch.League, " - ")[1]
 			}
 			countryItem, _ := GetCountryFromRedis(country)
-			newSportEvent.CountryId = countryItem.ReferenceId
+			sportEvent.CountryId = countryItem.ReferenceId
 			tournamentItem, _ := GetTournamentFromRedis(tournament)
-			newSportEvent.TournamentId = tournamentItem.ReferenceId
+			sportEvent.TournamentId = tournamentItem.ReferenceId
 		}
-		newSportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam
-		newSportEvent.StartAt = prematch.StartDate
-		newSportEvent.Status = prematch.Status
-		if err := database.DB.Table("sport_events").Create(&newSportEvent).Error; err != nil {
-			return newSportEvent, fmt.Errorf("CreateSportEvent: %v", err)
+		sportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam
+		sportEvent.StartAt = prematch.StartDate
+		sportEvent.Status = prematch.Status
+		if err := database.DB.Table("sport_events").Create(&sportEvent).Error; err != nil {
+			return sportEvent, fmt.Errorf("CreateSportEvent: %v", err)
 		}
-		return newSportEvent, nil
 	} else {
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
 		if err := database.DB.Table("sport_events").Save(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("UpdateSportEvent: %v", err)
 		}
-		return sportEvent, nil
 	}
 
 	// Save the updated or newly created sport event to Redis
@@ -52,6 +50,7 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 	if err := saveSportEventToRedis(ctx, sportEvent); err != nil {
 		return sportEvent, fmt.Errorf("CreateOrUpdateSportEvent: error saving sport event to Redis: %v", err)
 	}
+
 	return sportEvent, nil
 }
 
