@@ -1,81 +1,146 @@
 package repositories
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/types"
 	"strings"
 	"time"
+
+	"github.com/go-redis/redis"
 )
 
 func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (*types.MarketOutcomeItem, error) {
-	sportRefId, _ := GetSportRefId(prematch.Sport)
-	sportId, _ := GetSportId(prematch.Sport)
+	sport, _ := GetSportFromRedis(prematch.Sport)
+	sportRefId := sport.ReferenceId
+	sportId := sport.Id
 	newMarketOutcome := &types.MarketOutcomeItem{}
+	const (
+		homeReplacement = "Home"
+		awayReplacement = "Away"
+	)
+
 	for _, odds := range prematch.Odds {
 		oddsName := odds.Name
-		oddsName = strings.Replace(oddsName, prematch.HomeTeam, "Home", -1)
-		oddsName = strings.Replace(oddsName, prematch.AwayTeam, "Away", -1)
-		marketConstant, _ := GetMarketConstant(odds.MarketName)
+		oddsName = strings.Replace(oddsName, prematch.HomeTeam, homeReplacement, -1)
+		oddsName = strings.Replace(oddsName, prematch.AwayTeam, awayReplacement, -1)
+		marketConstant, _ := GetMarketConstantFromRedis(odds.MarketName)
 
-		marketOutcome, _ := MarketOutcomeFindByMarketAndOutcome(odds.MarketName, oddsName)
-		if marketOutcome == nil {
-			newMarketOutcome = &types.MarketOutcomeItem{}
-			newOutcomeConstant := &types.OutcomeConstantItem{}
-			newOutcomeConstant.ReferenceId = odds.MarketName + ":" + oddsName
-			newOutcomeConstant.Name = oddsName
-			if err := database.DB.Table("outcome_constants").Create(&newOutcomeConstant).Error; err != nil {
-				return newMarketOutcome, fmt.Errorf("OutcomeConstantsCreate: %v", err)
-			}
-
-			newMarketOutcome.MarketRefId = marketConstant.ReferenceId
-			newMarketOutcome.MarketDescription = odds.MarketName
-			newMarketOutcome.OutcomeRefId = newOutcomeConstant.ReferenceId
-			newMarketOutcome.OutcomeName = oddsName
-			newMarketOutcome.SportRefId = sportRefId
-			if err := database.DB.Table("market_outcomes").Create(&newMarketOutcome).Error; err != nil {
-				return newMarketOutcome, fmt.Errorf("MarketOutcomeCreate: %v", err)
-			}
+		if err := createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName); err != nil {
+			return newMarketOutcome, err
 		}
 
-		sportMarketGroup, _ := SportMarketGroupFindBy(sportId, marketConstant.Id)
-		if sportMarketGroup == nil {
-			newSportMarketGroup := &types.SportMarketGroupItem{}
-			newSportMarketGroup.SportId = sportId
-			newSportMarketGroup.SportName = prematch.Sport
-			newSportMarketGroup.MarketId = marketConstant.Id
-			newSportMarketGroup.MarketName = odds.MarketName
-			if err := database.DB.Table("sport_market_groups").Create(&newSportMarketGroup).Error; err != nil {
-				return newMarketOutcome, fmt.Errorf("SportMarketGroupCreate: %v", err)
-			}
+		if err := createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds); err != nil {
+			return newMarketOutcome, err
 		}
 
-		outcome, _ := OutcomeFind(sportEvent.Id, marketConstant.Id, oddsName)
-		outcomeConstant, _ := OutcomeConstantFind(odds.MarketName + ":" + oddsName)
-		if outcome == nil {
-			outcome = &types.OutcomeItem{}
-			outcome.ReferenceId = outcomeConstant.ReferenceId
-			outcome.EventId = sportEvent.Id
-			outcome.MarketId = marketConstant.Id
-			outcome.Name = oddsName
-			outcome.Odds = odds.Price
-			outcome.CreatedAt = time.Now().UTC()
-			outcome.UpdatedAt = time.Now().UTC()
-			if err := database.DB.Table("outcomes").Create(&outcome).Error; err != nil {
-				return newMarketOutcome, fmt.Errorf("OutcomeCreate: %v", err)
-			}
-		} else {
-			if outcome.Odds != odds.Price {
-				outcome.Odds = odds.Price
-				outcome.UpdatedAt = time.Now().UTC()
-				if err := database.DB.Table("outcomes").Save(&outcome).Error; err != nil {
-					return newMarketOutcome, fmt.Errorf("OutcomeSave: %v", err)
-				}
-			}
+		if err := createOrUpdateOutcome(odds, sportEvent, marketConstant, oddsName); err != nil {
+			return newMarketOutcome, err
 		}
 	}
+
 	return newMarketOutcome, nil
+}
+
+func createOrUpdateOutcome(odds *proto.Odds, sportEvent *types.SportEventItem, marketConstant *types.MarketConstantItem, oddsName string) error {
+	outcome, _ := OutcomeFind(sportEvent.Id, marketConstant.Id, oddsName)
+	outcomeConstant, _ := OutcomeConstantFind(odds.MarketName + ":" + oddsName)
+	if outcome == nil {
+		outcome = &types.OutcomeItem{
+			ReferenceId: outcomeConstant.ReferenceId,
+			EventId:     sportEvent.Id,
+			MarketId:    marketConstant.Id,
+			Name:        oddsName,
+			Odds:        odds.Price,
+			Active:      true,
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
+		}
+		if err := database.DB.Table("outcomes").Create(outcome).Error; err != nil {
+			return fmt.Errorf("OutcomeCreate: %v", err)
+		}
+	} else if outcome.Odds != odds.Price {
+		outcome.Odds = odds.Price
+
+		outcome.UpdatedAt = time.Now().UTC()
+		if err := database.DB.Table("outcomes").Save(outcome).Error; err != nil {
+			return fmt.Errorf("OutcomeSave: %v", err)
+		}
+	}
+	if err := SaveOutcomeToRedis(outcome); err != nil {
+		return err
+	}
+	return nil
+}
+
+func SaveOutcomeToRedis(outcome *types.OutcomeItem) error {
+	outcomeJSON, err := json.Marshal(outcome)
+	if err != nil {
+		fmt.Println("Error marshaling OutcomeItem:", err)
+		return err
+	}
+
+	ctx := context.Background()
+	key := fmt.Sprintf("event:%d-outcome:%s", outcome.EventId, outcome.ReferenceId)
+
+	// Save the outcome to Redis
+	err = database.RedisDB.Set(ctx, key, outcomeJSON, 0).Err()
+	if err != nil {
+		fmt.Println("Error saving OutcomeItem to Redis:", err)
+		return err
+	}
+
+	// Update the cache with the new outcome
+	cacheKey := fmt.Sprintf("event:%d-outcomes", outcome.EventId)
+	err = appendOutcomeToCache(ctx, cacheKey, outcome)
+	if err != nil {
+		fmt.Println("Error updating outcome cache:", err)
+		// Rollback the outcome from Redis
+		rollbackErr := database.RedisDB.Del(ctx, key).Err()
+		if rollbackErr != nil {
+			fmt.Println("Error rolling back OutcomeItem from Redis:", rollbackErr)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func appendOutcomeToCache(ctx context.Context, cacheKey string, outcome *types.OutcomeItem) error {
+	// Attempt to fetch cached outcomes
+	cachedOutcomesJSON, err := database.RedisDB.Get(ctx, cacheKey).Bytes()
+	if err == redis.Nil {
+		// If cache miss, initialize empty array
+		return nil
+		// cachedOutcomesJSON = []byte("[]")
+	} else if err != nil {
+		return err
+	}
+
+	// Deserialize cached outcomes
+	var cachedOutcomes []*types.OutcomeItem
+	if err := json.Unmarshal(cachedOutcomesJSON, &cachedOutcomes); err != nil {
+		return err
+	}
+
+	// Append new outcome to cached outcomes
+	cachedOutcomes = append(cachedOutcomes, outcome)
+
+	// Serialize updated outcomes
+	updatedOutcomesJSON, err := json.Marshal(cachedOutcomes)
+	if err != nil {
+		return err
+	}
+
+	// Update cache with the updated outcomes
+	if err := database.RedisDB.Set(ctx, cacheKey, updatedOutcomesJSON, 0).Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func OutcomeFind(eventId int32, marketId int32, name string) (*types.OutcomeItem, error) {
@@ -87,15 +152,4 @@ func OutcomeFind(eventId int32, marketId int32, name string) (*types.OutcomeItem
 		return outcome, fmt.Errorf("OutcomeFind: %v", err)
 	}
 	return outcome, nil
-}
-
-func OutcomeConstantFind(reference_id string) (*types.OutcomeConstantItem, error) {
-	var outcomeConstant *types.OutcomeConstantItem
-	if err := database.DB.Table("outcome_constants").Where("reference_id =?", reference_id).First(&outcomeConstant).Error; err != nil {
-		if err.Error() == "record not found" {
-			return nil, nil
-		}
-		return outcomeConstant, fmt.Errorf("OutcomeConstantFind: %v", err)
-	}
-	return outcomeConstant, nil
 }

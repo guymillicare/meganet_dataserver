@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"net/http"
+	"time"
+)
 
 type SportItem struct {
 	Id          int32     `json:"id"`
@@ -105,6 +108,7 @@ type OutcomeItem struct {
 	MarketId    int32     `json:"market_id"`
 	Name        string    `json:"name"`
 	Odds        float64   `json:"odds"`
+	Active      bool      `json:"active"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -130,4 +134,15 @@ type OddsStream struct {
 	} `json:"data"`
 	EntryId string `json:"entry_id"`
 	Type    string `json:"type"`
+}
+
+type GenericResponse struct{}
+
+func (rd *GenericResponse) Render(w http.ResponseWriter, r *http.Request) error {
+	return nil
+}
+
+type OutcomeListResponse struct {
+	GenericResponse
+	OutcomeList []*OutcomeItem `json:"outcomeList"`
 }

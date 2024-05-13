@@ -1,11 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"sportsbook-backend/internal/config"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/grpc"
 	pb "sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/repositories"
+	"sportsbook-backend/internal/routes"
 	"sportsbook-backend/internal/scheduler"
 	"sportsbook-backend/pkg/client"
 	"sync"
@@ -17,11 +20,12 @@ func main() {
 	database.InitPostgresDB(cfg)
 	database.InitRedis()
 	Preload()
+
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
 
 	// Start the scheduler to fetch games data periodically
 	prematchData := &grpc.PrematchData{}                                        // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartPrematchCronJob(gamesClient, prematchData, "0 */3 * * *")    // Runs every 3 hours
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "55 * * * *")     // Runs every 3 hours
 	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
 	oddsChannel := make(chan *pb.LiveOddsData)
@@ -39,8 +43,12 @@ func main() {
 		wg.Add(1)
 		go grpc.ListenToStream(url, oddsChannel, wg)
 	}
+	router := routes.SetupRouter()
+	fmt.Printf("Using port %d\n", 9000)
+	http.ListenAndServe(":9000", router)
 	// Start the gRPC server
 	grpc.StartGRPCServer(cfg.GRPCPort, prematchData, oddsChannel)
+
 }
 
 func Preload() {

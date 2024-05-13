@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	pb "sportsbook-backend/internal/proto"
+	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
 
 	"google.golang.org/grpc"
@@ -132,6 +134,18 @@ func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.Wait
 			Sportsbook:      oddsData.Data[0].Sportsbook,
 			Timestamp:       oddsData.Data[0].Timestamp,
 		}
+
+		outcome = &types.OutcomeItem{
+			ReferenceId: outcomeConstant.ReferenceId,
+			EventId:     sportEvent.Id,
+			MarketId:    marketConstant.Id,
+			Name:        oddsName,
+			Odds:        odds.Price,
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
+		}
+
+		repositories.SaveOutcomeToRedis(outcome)
 		convertedOddsData := &pb.LiveOddsData{
 			EntryId: oddsData.EntryId,
 			Type:    oddsData.Type,

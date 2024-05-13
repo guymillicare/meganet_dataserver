@@ -14,15 +14,18 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 	if sportEvent == nil {
 		newSportEvent.ProviderId = 1
 		newSportEvent.ReferenceId = prematch.Id
-		newSportEvent.SportId, _ = GetSportRefId(prematch.Sport)
+		sport, _ := GetSportFromRedis(prematch.Sport)
+		newSportEvent.SportId = sport.ReferenceId
 		if prematch.League != "" {
 			country := strings.Split(prematch.League, " - ")[0]
 			tournament := strings.Split(prematch.League, " - ")[0]
 			if len(strings.Split(prematch.League, " - ")) > 1 {
 				tournament = strings.Split(prematch.League, " - ")[1]
 			}
-			newSportEvent.CountryId, _ = GetCountryId(country)
-			newSportEvent.TournamentId, _ = GetTournamentId(tournament)
+			countryItem, _ := GetCountryFromRedis(country)
+			newSportEvent.CountryId = countryItem.ReferenceId
+			tournamentItem, _ := GetTournamentFromRedis(tournament)
+			newSportEvent.TournamentId = tournamentItem.ReferenceId
 		}
 		newSportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam
 		newSportEvent.StartAt = prematch.StartDate
