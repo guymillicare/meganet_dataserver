@@ -18,7 +18,7 @@ func main() {
 	cfg := config.LoadConfig() // Load configuration
 
 	database.InitPostgresDB(cfg)
-	database.InitRedis()
+	database.InitRedis(cfg)
 	// Preload()
 
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
