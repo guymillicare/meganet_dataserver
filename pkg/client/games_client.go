@@ -157,7 +157,7 @@ func (gc *GamesClient) FetchStatus() {
 			}
 			mu.Lock()
 			for _, item := range gameScoreResponse.Data {
-				scoreMap[item.GameId] = item.Stauts
+				scoreMap[item.GameId] = item.Status
 			}
 			mu.Unlock()
 		}(i)
