@@ -30,17 +30,9 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 			continue
 		}
 
-		if err := createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName); err != nil {
-			return newMarketOutcome, err
-		}
-
-		if err := createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds); err != nil {
-			return newMarketOutcome, err
-		}
-
-		if err := createOrUpdateOutcome(odds, sportEvent, marketConstant, oddsName); err != nil {
-			return newMarketOutcome, err
-		}
+		createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName)
+		createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds)
+		createOrUpdateOutcome(odds, sportEvent, marketConstant, oddsName)
 	}
 
 	return newMarketOutcome, nil

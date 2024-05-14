@@ -91,47 +91,50 @@ func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.Wait
 		}
 
 		// Convert types.OddsStream to pb.LiveOddsData as needed before sending
-		convertedOdds := &pb.Data{
-			BetName:         oddsData.Data[0].BetName,
-			BetPoints:       oddsData.Data[0].BetPoints,
-			BetPrice:        oddsData.Data[0].BetPrice,
-			BetType:         oddsData.Data[0].BetType,
-			GameId:          oddsData.Data[0].GameId,
-			Id:              oddsData.Data[0].Id,
-			IsLive:          oddsData.Data[0].IsLive,
-			IsMain:          oddsData.Data[0].IsMain,
-			League:          oddsData.Data[0].League,
-			PlayerId:        oddsData.Data[0].PlayerId,
-			Selection:       oddsData.Data[0].Selection,
-			SelectionLine:   oddsData.Data[0].SelectionLine,
-			SelectionPoints: oddsData.Data[0].SelectionPoints,
-			Sport:           oddsData.Data[0].Sport,
-			Sportsbook:      oddsData.Data[0].Sportsbook,
-			Timestamp:       oddsData.Data[0].Timestamp,
-		}
-
-		sportEvent, _ := repositories.GetSportEventFromRedis(oddsData.Data[0].GameId)
-		marketConstant, _ := repositories.GetMarketConstantFromRedis(oddsData.Data[0].BetType)
-		if marketConstant != nil {
-			outcome := &types.OutcomeItem{
-				ReferenceId: oddsData.Data[0].BetType + ":" + oddsData.Data[0].BetName,
-				EventId:     sportEvent.Id,
-				MarketId:    marketConstant.Id,
-				Name:        oddsData.Data[0].BetName,
-				Odds:        oddsData.Data[0].BetPrice,
-				Active:      oddsData.Type == "updated",
-				CreatedAt:   time.Now().UTC(),
-				UpdatedAt:   time.Now().UTC(),
+		for _, odds := range oddsData.Data {
+			convertedOdds := &pb.Data{
+				BetName:         odds.BetName,
+				BetPoints:       odds.BetPoints,
+				BetPrice:        odds.BetPrice,
+				BetType:         odds.BetType,
+				GameId:          odds.GameId,
+				Id:              odds.Id,
+				IsLive:          odds.IsLive,
+				IsMain:          odds.IsMain,
+				League:          odds.League,
+				PlayerId:        odds.PlayerId,
+				Selection:       odds.Selection,
+				SelectionLine:   odds.SelectionLine,
+				SelectionPoints: odds.SelectionPoints,
+				Sport:           odds.Sport,
+				Sportsbook:      odds.Sportsbook,
+				Timestamp:       odds.Timestamp,
 			}
-			repositories.SaveOutcomeToRedis(outcome)
-			convertedOddsData := &pb.LiveOddsData{
-				EntryId: oddsData.EntryId,
-				Type:    oddsData.Type,
-				Data:    convertedOdds,
-			} // Conversion logic here
-			oddsChannel <- convertedOddsData
 
+			sportEvent, _ := repositories.GetSportEventFromRedis(odds.GameId)
+			marketConstant, _ := repositories.GetMarketConstantFromRedis(odds.BetType)
+			if marketConstant != nil && sportEvent != nil {
+				outcome := &types.OutcomeItem{
+					ReferenceId: odds.BetType + ":" + odds.BetName,
+					EventId:     sportEvent.Id,
+					MarketId:    marketConstant.Id,
+					Name:        odds.BetName,
+					Odds:        odds.BetPrice,
+					Active:      oddsData.Type == "updated",
+					CreatedAt:   time.Now().UTC(),
+					UpdatedAt:   time.Now().UTC(),
+				}
+				repositories.SaveOutcomeToRedis(outcome)
+				convertedOddsData := &pb.LiveOddsData{
+					EntryId: oddsData.EntryId,
+					Type:    oddsData.Type,
+					Data:    convertedOdds,
+				} // Conversion logic here
+				oddsChannel <- convertedOddsData
+
+			}
 		}
+
 	}
 
 	if err := scanner.Err(); err != nil {
