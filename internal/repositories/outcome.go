@@ -26,6 +26,9 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 		oddsName = strings.Replace(oddsName, prematch.HomeTeam, homeReplacement, -1)
 		oddsName = strings.Replace(oddsName, prematch.AwayTeam, awayReplacement, -1)
 		marketConstant, _ := GetMarketConstantFromRedis(odds.MarketName)
+		if marketConstant == nil {
+			continue
+		}
 
 		if err := createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName); err != nil {
 			return newMarketOutcome, err
