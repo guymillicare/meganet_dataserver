@@ -12,7 +12,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
+func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 	sportEvent, _ := GetSportEventFromRedis(prematch.Id)
 	if sportEvent == nil {
 		sportEvent = &types.SportEventItem{}
@@ -54,9 +54,19 @@ func CreateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
 	return sportEvent, nil
 }
 
+func UpdateSportEventStatus(event *types.SportEventItem) {
+	if err := database.DB.Table("sport_events").Save(&event).Error; err != nil {
+		fmt.Printf("UpdateSportEventStatus: %v\n", err)
+	}
+	ctx := context.Background()
+	if err := saveSportEventToRedis(ctx, event); err != nil {
+		fmt.Printf("CreateOrUpdateSportEvent: error saving sport event to Redis: %v\n", err)
+	}
+}
+
 func SportEventsFindAll() ([]*types.SportEventItem, error) {
 	var sportEvent []*types.SportEventItem
-	if err := database.DB.Table("sport_events").Find(&sportEvent).Error; err != nil {
+	if err := database.DB.Table("sport_events").Where("status!=?", "Completed").Find(&sportEvent).Error; err != nil {
 		if err.Error() == "record not found" {
 			return nil, nil
 		}

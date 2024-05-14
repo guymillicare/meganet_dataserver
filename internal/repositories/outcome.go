@@ -9,8 +9,6 @@ import (
 	"sportsbook-backend/internal/types"
 	"strings"
 	"time"
-
-	"github.com/go-redis/redis"
 )
 
 func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (*types.MarketOutcomeItem, error) {
@@ -112,12 +110,13 @@ func SaveOutcomeToRedis(outcome *types.OutcomeItem) error {
 func appendOutcomeToCache(ctx context.Context, cacheKey string, outcome *types.OutcomeItem) error {
 	// Attempt to fetch cached outcomes
 	cachedOutcomesJSON, err := database.RedisDB.Get(ctx, cacheKey).Bytes()
-	if err == redis.Nil {
+	if err != nil {
+		return nil
+	}
+	if cachedOutcomesJSON == nil {
 		// If cache miss, initialize empty array
 		return nil
 		// cachedOutcomesJSON = []byte("[]")
-	} else if err != nil {
-		return err
 	}
 
 	// Deserialize cached outcomes

@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"log"
 	"net"
@@ -20,19 +19,18 @@ import (
 
 type server struct {
 	pb.UnimplementedSportsbookServiceServer
-	prematchData *PrematchData
-	lock         sync.Mutex // Protects the clients map
-	clients      map[string]chan *pb.LiveOddsData
-	oddsChannel  chan *pb.LiveOddsData
+	lock        sync.Mutex // Protects the clients map
+	clients     map[string]chan *pb.LiveOddsData
+	oddsChannel chan *pb.LiveOddsData
 }
 
 // ListPrematch returns a prematch data response.
-func (s *server) ListPrematch(ctx context.Context, req *pb.ListPrematchRequest) (*pb.ListPrematchResponse, error) {
-	if s.prematchData == nil || s.prematchData.GetPrematchData() == nil {
-		return nil, nil
-	}
-	return s.prematchData.GetPrematchData(), nil
-}
+// func (s *server) ListPrematch(ctx context.Context, req *pb.ListPrematchRequest) (*pb.ListPrematchResponse, error) {
+// 	if s.prematchData == nil || s.prematchData.GetPrematchData() == nil {
+// 		return nil, nil
+// 	}
+// 	return s.prematchData.GetPrematchData(), nil
+// }
 
 // BroadcastOddsData sends live odds to all connected clients.
 func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveOddsServer) error {
@@ -47,25 +45,25 @@ func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookServi
 }
 
 // StartGRPCServer initializes and starts the gRPC server.
-func StartGRPCServer(port string, prematchData *PrematchData, oddsChannel chan *pb.LiveOddsData) {
+func StartGRPCServer(port string, oddsChannel chan *pb.LiveOddsData) {
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer()
 	sportsbookServer := &server{
-		prematchData: prematchData,
-		oddsChannel:  oddsChannel,
+		// prematchData: prematchData,
+		oddsChannel: oddsChannel,
 	}
 	pb.RegisterSportsbookServiceServer(grpcServer, sportsbookServer)
-	// go sportsbookServer.BroadcastOddsData()
+	go func() {
+		log.Printf("gRPC server listening at %v", lis.Addr())
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve gRPC: %v", err)
+		}
+	}()
 
-	log.Printf("Server listening at %v", lis.Addr())
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
-	}
-
-	// Example usage: sportsbookServer.BroadcastOddsData(&pb.LiveOddsData{})
+	log.Printf("gRPC server started")
 }
 
 func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.WaitGroup) {

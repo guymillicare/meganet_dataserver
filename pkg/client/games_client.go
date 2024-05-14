@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/repositories"
+	"sportsbook-backend/internal/types"
 	"sync"
 )
 
@@ -21,7 +21,8 @@ func NewGamesClient(baseURL string, apiKey string) *GamesClient {
 
 func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 	var responses proto.ListPrematchResponse
-	for _, sport := range database.SPORTS {
+	sports, _ := repositories.SportsFindAll()
+	for _, sport := range sports {
 		url := fmt.Sprintf(
 			"%s/api/v2/games?key=%s&sport=%s",
 			gc.BaseURL,
@@ -101,7 +102,7 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 				prematch.Odds = odds
 				filteredData = append(filteredData, prematch)
 				repositories.CreateCompetitor(prematch)
-				sportEvent, _ := repositories.CreateSportEvent(prematch)
+				sportEvent, _ := repositories.CreateOrUpdateSportEvent(prematch)
 				repositories.CreateOutcome(prematch, sportEvent)
 			}
 		}
@@ -112,28 +113,62 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 	return &responses, nil
 }
 
-func (gc *GamesClient) FetchStatus() (*proto.ListPrematchResponse, error) {
-	var responses proto.ListPrematchResponse
-	for _, sport := range database.SPORTS {
-		url := fmt.Sprintf(
-			"%s/api/v2/games?key=%s&sport=%s",
-			gc.BaseURL,
-			gc.APIKey,
-			sport.Slug,
-		)
-		resp, err := http.Get(url)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
+func (gc *GamesClient) FetchStatus() {
+	sportEvents, err := repositories.SportEventsFindAll()
+	if err != nil {
+		return
+	}
+	scoreMap := make(map[string]string)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	for i := 0; i < len(sportEvents); i += 5 {
+		wg.Add(1)
+		go func(start int) {
+			defer wg.Done()
 
-		var gameListResponse proto.ListPrematchResponse
-		if err := json.NewDecoder(resp.Body).Decode(&gameListResponse); err != nil {
-			return nil, err
-		}
-		for _, prematch := range gameListResponse.Data {
-			repositories.CreateSportEvent(prematch)
+			end := start + 5
+			if end > len(sportEvents) {
+				end = len(sportEvents)
+			}
+
+			gameIDs := make([]string, 0, 5)
+			for j := start; j < end; j++ {
+				gameIDs = append(gameIDs, sportEvents[j].ReferenceId)
+			}
+
+			url := fmt.Sprintf(
+				"%s/api/v2/scores?key=%s",
+				gc.BaseURL,
+				gc.APIKey,
+			)
+
+			for _, gameID := range gameIDs {
+				url += fmt.Sprintf("&game_id=%s", gameID)
+			}
+			resp, err := http.Get(url)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+
+			var gameScoreResponse types.GameScoreResponse
+			if err := json.NewDecoder(resp.Body).Decode(&gameScoreResponse); err != nil {
+				return
+			}
+			mu.Lock()
+			for _, item := range gameScoreResponse.Data {
+				scoreMap[item.GameId] = item.Stauts
+			}
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
+	for _, sportEvent := range sportEvents {
+		if status, ok := scoreMap[sportEvent.ReferenceId]; ok {
+			if status != sportEvent.Status {
+				sportEvent.Status = status
+				repositories.UpdateSportEventStatus(sportEvent)
+			}
 		}
 	}
-	return &responses, nil
 }

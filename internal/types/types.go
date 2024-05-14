@@ -146,3 +146,26 @@ type OutcomeListResponse struct {
 	GenericResponse
 	OutcomeList []*OutcomeItem `json:"outcomeList"`
 }
+
+type GameScoreResponse struct {
+	Data []struct {
+		GameId         string `json:"game_id"`
+		ScoreHomeTotal int    `json:"score_home_total"`
+		ScoreAwayTotal int    `json:"score_away_total"`
+		Clock          string `json:"clock"`
+		Sport          string `json:"sport"`
+		League         string `json:"league"`
+		Period         string `json:"period"`
+		Stauts         string `json:"stauts"`
+		IsLive         string `json:"is_live"`
+		Weather        string `json:"weather"`
+		Capacity       string `json:"capacity"`
+		AwayTeam       string `json:"away_team"`
+		HomeTeam       string `json:"home_team"`
+		LastPlay       string `json:"last_play"`
+		Attendance     string `json:"attendance"`
+		StartDate      string `json:"start_date"`
+	} `json:"data"`
+	Page       int `json:"page"`
+	TotalPages int `json:"total_pages"`
+}

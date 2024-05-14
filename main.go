@@ -19,7 +19,7 @@ func main() {
 
 	database.InitPostgresDB(cfg)
 	database.InitRedis()
-	Preload()
+	// Preload()
 
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
 
@@ -29,25 +29,20 @@ func main() {
 	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
 	oddsChannel := make(chan *pb.LiveOddsData)
-	// go grpc.ListenToStream(oddsChannel)
-
-	urls := []string{
-		"https://api.opticodds.com/api/v2/stream/odds?sportsbooks=bwin&league=England - Premier League&key=88f9bd7f-463c-44ca-b938-fd5bf2704e52",
-		"https://api.opticodds.com/api/v2/stream/odds?sportsbooks=bwin&league=Spain - La Liga&key=88f9bd7f-463c-44ca-b938-fd5bf2704e52",
-		// Add more URLs as needed
-	}
 	wg := &sync.WaitGroup{}
 
-	// Start listening to all URLs concurrently
-	for _, url := range urls {
+	tournamnets, _ := repositories.TournamentsFindAll()
+	for _, tournament := range tournamnets {
+		url := fmt.Sprintf("https://api.opticodds.com/api/v2/stream/odds?sportsbooks=bwin&league=%s&key=88f9bd7f-463c-44ca-b938-fd5bf2704e52", tournament.Name)
 		wg.Add(1)
 		go grpc.ListenToStream(url, oddsChannel, wg)
 	}
+	// Start the gRPC server
+	grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel)
+	// Start the HTTP server
 	router := routes.SetupRouter()
 	fmt.Printf("Using port %d\n", 9000)
 	http.ListenAndServe(":9000", router)
-	// Start the gRPC server
-	grpc.StartGRPCServer(cfg.GRPCPort, prematchData, oddsChannel)
 
 }
 
@@ -55,4 +50,6 @@ func Preload() {
 	repositories.SportsPreload()
 	repositories.CountriesPreload()
 	repositories.TournamentsPreload()
+	repositories.SportEventsPreload()
+	repositories.MarketConstantsPreload()
 }
