@@ -33,7 +33,7 @@ func main() {
 
 	tournamnets, _ := repositories.TournamentsFindAll()
 	for _, tournament := range tournamnets {
-		url := fmt.Sprintf("https://api.opticodds.com/api/v2/stream/odds?sportsbooks=bwin&league=%s&key=88f9bd7f-463c-44ca-b938-fd5bf2704e52", tournament.Name)
+		url := fmt.Sprintf("%s/api/v2/stream/odds?sportsbooks=bwin&league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
 		wg.Add(1)
 		go grpc.ListenToStream(url, oddsChannel, wg)
 	}
