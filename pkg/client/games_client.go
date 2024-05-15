@@ -1,9 +1,11 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
@@ -100,12 +102,22 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 	// Filter out games with empty odds
 	var filteredData []*proto.Prematch
 	for _, prematch := range gameListResponse.Data {
+		ctx := context.Background()
+		key := fmt.Sprintf("fetched:match:%s", prematch.Id)
+		val, err := database.RedisDB.Get(ctx, key).Result()
+		if err == nil && val == "fetched" {
+			continue
+		}
 		if odds, ok := oddsMap[prematch.Id]; ok && len(odds) > 0 {
 			prematch.Odds = odds
 			filteredData = append(filteredData, prematch)
 			repositories.CreateCompetitor(prematch)
 			sportEvent, _ := repositories.CreateOrUpdateSportEvent(prematch)
 			repositories.CreateOutcome(prematch, sportEvent)
+		}
+		err = database.RedisDB.Set(ctx, key, "fetched", 0).Err()
+		if err != nil {
+			fmt.Println("Error saving OutcomeItem to Redis:", err)
 		}
 	}
 	gameListResponse.Data = filteredData
