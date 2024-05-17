@@ -65,6 +65,8 @@ type SportEventItem struct {
 	StartAt      string    `json:"start_at"`
 	Status       string    `json:"status"`
 	Active       int32     `json:"active"`
+	HomeScore    int32     `json:"home_score"`
+	AwayScore    int32     `json:"away_score"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	DeletedAt    time.Time `json:"-"`

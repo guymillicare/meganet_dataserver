@@ -27,8 +27,14 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 				tournament = strings.Split(prematch.League, " - ")[1]
 			}
 			countryItem, _ := GetCountryFromRedis(country)
+			if countryItem == nil {
+				return sportEvent, fmt.Errorf("GetCountryFromRedis")
+			}
 			sportEvent.CountryId = countryItem.ReferenceId
 			tournamentItem, _ := GetTournamentFromRedis(tournament)
+			if tournamentItem == nil {
+				return sportEvent, fmt.Errorf("GetCountryFromRedis")
+			}
 			sportEvent.TournamentId = tournamentItem.ReferenceId
 		}
 		sportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam

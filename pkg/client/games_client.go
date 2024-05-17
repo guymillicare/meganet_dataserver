@@ -133,6 +133,9 @@ func (gc *GamesClient) FetchStatus() {
 		return
 	}
 	scoreMap := make(map[string]string)
+	scoreStartDateMap := make(map[string]string)
+	scoreHomeMap := make(map[string]int)
+	scoreAwayMap := make(map[string]int)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	for i := 0; i < len(sportEvents); i += 5 {
@@ -172,6 +175,9 @@ func (gc *GamesClient) FetchStatus() {
 			mu.Lock()
 			for _, item := range gameScoreResponse.Data {
 				scoreMap[item.GameId] = item.Status
+				scoreStartDateMap[item.GameId] = item.StartDate
+				scoreHomeMap[item.GameId] = item.ScoreHomeTotal
+				scoreAwayMap[item.GameId] = item.ScoreAwayTotal
 			}
 			mu.Unlock()
 		}(i)
@@ -179,10 +185,17 @@ func (gc *GamesClient) FetchStatus() {
 	wg.Wait()
 	for _, sportEvent := range sportEvents {
 		if status, ok := scoreMap[sportEvent.ReferenceId]; ok {
-			if status != sportEvent.Status {
-				sportEvent.Status = status
-				repositories.UpdateSportEventStatus(sportEvent)
-			}
+			sportEvent.Status = status
 		}
+		if startDate, ok := scoreStartDateMap[sportEvent.ReferenceId]; ok {
+			sportEvent.StartAt = startDate
+		}
+		if homeScore, ok := scoreHomeMap[sportEvent.ReferenceId]; ok {
+			sportEvent.HomeScore = int32(homeScore)
+		}
+		if awayScore, ok := scoreAwayMap[sportEvent.ReferenceId]; ok {
+			sportEvent.AwayScore = int32(awayScore)
+		}
+		repositories.UpdateSportEventStatus(sportEvent)
 	}
 }
