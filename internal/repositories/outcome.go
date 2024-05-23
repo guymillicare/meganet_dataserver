@@ -13,6 +13,9 @@ import (
 
 func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (*types.MarketOutcomeItem, error) {
 	sport, _ := GetSportFromRedis(prematch.Sport)
+	if sport == nil {
+		return nil, nil
+	}
 	sportRefId := sport.ReferenceId
 	sportId := sport.Id
 	newMarketOutcome := &types.MarketOutcomeItem{}

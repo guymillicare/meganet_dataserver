@@ -151,13 +151,13 @@ type OutcomeListResponse struct {
 
 type GameScoreResponse struct {
 	Data []struct {
-		GameId                 string  `json:"game_id"`
-		ScoreHomeTotal         int     `json:"score_home_total"`
-		ScoreAwayTotal         int     `json:"score_away_total"`
-		Clock                  *string `json:"clock,omitempty"`
-		Sport                  string  `json:"sport"`
-		League                 string  `json:"league"`
-		Period                 string  `json:"period"`
+		GameId         string  `json:"game_id"`
+		ScoreHomeTotal int     `json:"score_home_total"`
+		ScoreAwayTotal int     `json:"score_away_total"`
+		Clock          *string `json:"clock,omitempty"`
+		Sport          string  `json:"sport"`
+		League         string  `json:"league"`
+		// Period                 int     `json:"period"`
 		Status                 string  `json:"status"`
 		IsLive                 bool    `json:"is_live"`
 		Duration               *string `json:"duration,omitempty"`

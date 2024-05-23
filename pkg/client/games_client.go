@@ -62,12 +62,13 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 			}
 
 			oddsURL := fmt.Sprintf(
-				"%s/api/v2/game-odds?key=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s",
+				"%s/api/v2/game-odds?key=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s",
 				gc.BaseURL,
 				gc.APIKey,
 				"bet365",
 				"betsson",
 				"Pinnacle",
+				"1XBet",
 			)
 			for _, gameID := range gameIDs {
 				oddsURL += fmt.Sprintf("&game_id=%s", gameID)
@@ -106,6 +107,7 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 		key := fmt.Sprintf("fetched:match:%s", prematch.Id)
 		val, err := database.RedisDB.Get(ctx, key).Result()
 		if err == nil && val == "fetched" {
+			repositories.CreateOrUpdateSportEvent(prematch)
 			continue
 		}
 		if odds, ok := oddsMap[prematch.Id]; ok && len(odds) > 0 {
@@ -162,6 +164,8 @@ func (gc *GamesClient) FetchStatus() {
 			for _, gameID := range gameIDs {
 				url += fmt.Sprintf("&game_id=%s", gameID)
 			}
+
+			fmt.Println(url)
 			resp, err := http.Get(url)
 			if err != nil {
 				return
@@ -170,6 +174,7 @@ func (gc *GamesClient) FetchStatus() {
 
 			var gameScoreResponse types.GameScoreResponse
 			if err := json.NewDecoder(resp.Body).Decode(&gameScoreResponse); err != nil {
+				fmt.Println("Error", err)
 				return
 			}
 			mu.Lock()
@@ -178,6 +183,7 @@ func (gc *GamesClient) FetchStatus() {
 				scoreStartDateMap[item.GameId] = item.StartDate
 				scoreHomeMap[item.GameId] = item.ScoreHomeTotal
 				scoreAwayMap[item.GameId] = item.ScoreAwayTotal
+				fmt.Println(item.GameId, item.Status, item.StartDate, item.ScoreHomeTotal, item.ScoreAwayTotal)
 			}
 			mu.Unlock()
 		}(i)

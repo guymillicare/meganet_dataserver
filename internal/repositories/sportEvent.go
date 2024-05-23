@@ -19,6 +19,9 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 		sportEvent.ProviderId = 1
 		sportEvent.ReferenceId = prematch.Id
 		sport, _ := GetSportFromRedis(prematch.Sport)
+		if sport == nil {
+			fmt.Print("SPORT", prematch.Sport)
+		}
 		sportEvent.SportId = sport.ReferenceId
 		if prematch.League != "" {
 			country := strings.Split(prematch.League, " - ")[0]
@@ -72,7 +75,7 @@ func UpdateSportEventStatus(event *types.SportEventItem) {
 
 func SportEventsFindAll() ([]*types.SportEventItem, error) {
 	var sportEvent []*types.SportEventItem
-	if err := database.DB.Table("sport_events").Where("status!=?", "Completed").Find(&sportEvent).Error; err != nil {
+	if err := database.DB.Table("sport_events").Where("status!='Completed'").Find(&sportEvent).Error; err != nil {
 		if err.Error() == "record not found" {
 			return nil, nil
 		}
