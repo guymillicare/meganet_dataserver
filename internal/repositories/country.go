@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/types"
+	"time"
 
 	"github.com/go-redis/redis"
 )
@@ -29,7 +30,10 @@ func saveCountryToRedis(ctx context.Context, country *types.CountryItem) error {
 
 	key := fmt.Sprintf("country:%s", country.Name)
 
-	err = database.RedisDB.Set(ctx, key, countryJSON, 0).Err()
+	// Define the expiration time as 90 days
+	expiration := 90 * 24 * time.Hour
+
+	err = database.RedisDB.Set(ctx, key, countryJSON, expiration).Err()
 	if err != nil {
 		return fmt.Errorf("saveCountryToRedis: error saving country to Redis: %v", err)
 	}

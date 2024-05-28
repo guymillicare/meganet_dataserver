@@ -8,6 +8,7 @@ import (
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/types"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis"
 )
@@ -94,7 +95,10 @@ func saveSportEventToRedis(ctx context.Context, sportEvent *types.SportEventItem
 
 	key := fmt.Sprintf("sportEvent:%s", sportEvent.ReferenceId)
 
-	err = database.RedisDB.Set(ctx, key, sportEventJSON, 0).Err()
+	// Define the expiration time as 90 days
+	expiration := 90 * 24 * time.Hour
+
+	err = database.RedisDB.Set(ctx, key, sportEventJSON, expiration).Err()
 	if err != nil {
 		return fmt.Errorf("saveSportEventToRedis: error saving sportEvent to Redis: %v", err)
 	}
@@ -135,4 +139,39 @@ func GetSportEventFromRedis(refId string) (*types.SportEventItem, error) {
 	}
 
 	return &sportEvent, nil
+}
+
+func SportEventsFindByFilters(systemId int32, providerId int, status string, sportId int32, countryId int32, tournamentId int32, offset int, limit int) ([]*types.SportEventFullItem, error) {
+	var result []*types.SportEventFullItem
+	query := database.DB.
+		Table("sport_events").
+		Select("sport_events.id as id",
+			"sport_events.name as name",
+			"sport_events.start_at as start_at",
+			"sports.name as sport_name",
+			"countries.name as country_name",
+			"tournaments.name as tournament_name",
+			"sport_events.home_score as home_score",
+			"sport_events.away_score as away_score").
+		Joins("LEFT JOIN sports ON sports.id = sport_events.sport_id").
+		Joins("LEFT JOIN countries ON countries.id = sport_events.country_id").
+		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id").
+		Joins("LEFT JOIN system_sports ON system_sports.sport_id = sports.id").
+		Where("sport_events.provider_id=? AND sport_events.status = ?", providerId, status)
+	if systemId > 0 {
+		query = query.Where("system_sports.system_id=?", systemId)
+	}
+	if sportId > 0 {
+		query = query.Where("sport_events.sport_id=?", sportId)
+	}
+	if countryId > 0 {
+		query = query.Where("sport_events.country_id=?", countryId)
+	}
+	if tournamentId > 0 {
+		query = query.Where("sport_events.tournament_id=?", tournamentId)
+	}
+	if err := query.Offset(offset).Limit(limit).Find(&result).Order("created_at").Error; err != nil {
+		return nil, fmt.Errorf("SportEventsFindByFilters: %v", err)
+	}
+	return result, nil
 }

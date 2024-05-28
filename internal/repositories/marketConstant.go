@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/types"
+	"time"
 
 	"github.com/go-redis/redis"
 )
@@ -29,7 +30,10 @@ func saveMarketConstantToRedis(ctx context.Context, marketConstant *types.Market
 
 	key := fmt.Sprintf("marketConstant:%s", marketConstant.Description)
 
-	err = database.RedisDB.Set(ctx, key, marketConstantJSON, 0).Err()
+	// Define the expiration time as 90 days
+	expiration := 90 * 24 * time.Hour
+
+	err = database.RedisDB.Set(ctx, key, marketConstantJSON, expiration).Err()
 	if err != nil {
 		return fmt.Errorf("saveMarketConstantToRedis: error saving marketConstant to Redis: %v", err)
 	}

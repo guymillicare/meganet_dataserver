@@ -149,6 +149,11 @@ type OutcomeListResponse struct {
 	OutcomeList []*OutcomeItem `json:"outcomeList"`
 }
 
+type SportEventListResponse struct {
+	GenericResponse
+	SportEventList []*SportEventFullItem `json:"sportEventList"`
+}
+
 type GameScoreResponse struct {
 	Data []struct {
 		GameId         string  `json:"game_id"`
@@ -218,4 +223,17 @@ type GameScoreResponse struct {
 	} `json:"data"`
 	Page       int `json:"page"`
 	TotalPages int `json:"total_pages"`
+}
+
+type SportEventFullItem struct {
+	Id             int32          `json:"id"`
+	Name           string         `json:"name"`
+	StartAt        time.Time      `json:"start_at"`
+	Active         bool           `json:"active"`
+	SportName      string         `json:"sport_name"`
+	CountryName    string         `json:"country_name"`
+	TournamentName string         `json:"tournament_name"`
+	HomeScore      int32          `json:"home_score"`
+	AwayScore      int32          `json:"away_score"`
+	Outcome        []*OutcomeItem `json:"outcome"`
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/types"
+	"time"
 
 	"github.com/go-redis/redis"
 )
@@ -27,7 +28,11 @@ func saveTournamentToRedis(ctx context.Context, tournament *types.TournamentItem
 		return fmt.Errorf("saveTournamentToRedis: error marshaling tournament: %v", err)
 	}
 	key := fmt.Sprintf("tournament:%s", tournament.Name)
-	err = database.RedisDB.Set(ctx, key, tournamentJSON, 0).Err()
+
+	// Define the expiration time as 90 days
+	expiration := 90 * 24 * time.Hour
+
+	err = database.RedisDB.Set(ctx, key, tournamentJSON, expiration).Err()
 	if err != nil {
 		return fmt.Errorf("saveTournamentToRedis: error saving tournament to Redis: %v", err)
 	}

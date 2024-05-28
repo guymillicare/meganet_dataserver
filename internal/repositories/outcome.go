@@ -82,8 +82,11 @@ func SaveOutcomeToRedis(outcome *types.OutcomeItem) error {
 	ctx := context.Background()
 	key := fmt.Sprintf("event:%d-outcome:%s", outcome.EventId, outcome.ReferenceId)
 
+	// Define the expiration time as 90 days
+	expiration := 90 * 24 * time.Hour
+
 	// Save the outcome to Redis
-	err = database.RedisDB.Set(ctx, key, outcomeJSON, 0).Err()
+	err = database.RedisDB.Set(ctx, key, outcomeJSON, expiration).Err()
 	if err != nil {
 		fmt.Println("Error saving OutcomeItem to Redis:", err)
 		return err
@@ -132,8 +135,11 @@ func appendOutcomeToCache(ctx context.Context, cacheKey string, outcome *types.O
 		return err
 	}
 
+	// Define the expiration time as 90 days
+	expiration := 90 * 24 * time.Hour
+
 	// Update cache with the updated outcomes
-	if err := database.RedisDB.Set(ctx, cacheKey, updatedOutcomesJSON, 0).Err(); err != nil {
+	if err := database.RedisDB.Set(ctx, cacheKey, updatedOutcomesJSON, expiration).Err(); err != nil {
 		return err
 	}
 

@@ -10,6 +10,7 @@ import (
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
 	"sync"
+	"time"
 )
 
 type GamesClient struct {
@@ -116,7 +117,9 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 			repositories.CreateCompetitor(prematch)
 			sportEvent, _ := repositories.CreateOrUpdateSportEvent(prematch)
 			repositories.CreateOutcome(prematch, sportEvent)
-			err = database.RedisDB.Set(ctx, key, "fetched", 0).Err()
+			// Define the expiration time as 90 days
+			expiration := 90 * 24 * time.Hour
+			err = database.RedisDB.Set(ctx, key, "fetched", expiration).Err()
 			if err != nil {
 				fmt.Println("Error saving OutcomeItem to Redis:", err)
 			}
