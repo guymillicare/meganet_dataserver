@@ -120,7 +120,7 @@ func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.Wait
 					MarketId:    marketConstant.Id,
 					Name:        odds.BetName,
 					Odds:        odds.BetPrice,
-					Active:      oddsData.Type == "updated",
+					Active:      oddsData.Type == "odds",
 					CreatedAt:   time.Now().UTC(),
 					UpdatedAt:   time.Now().UTC(),
 				}

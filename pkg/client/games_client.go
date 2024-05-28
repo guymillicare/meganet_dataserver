@@ -116,10 +116,10 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 			repositories.CreateCompetitor(prematch)
 			sportEvent, _ := repositories.CreateOrUpdateSportEvent(prematch)
 			repositories.CreateOutcome(prematch, sportEvent)
-		}
-		err = database.RedisDB.Set(ctx, key, "fetched", 0).Err()
-		if err != nil {
-			fmt.Println("Error saving OutcomeItem to Redis:", err)
+			err = database.RedisDB.Set(ctx, key, "fetched", 0).Err()
+			if err != nil {
+				fmt.Println("Error saving OutcomeItem to Redis:", err)
+			}
 		}
 	}
 	gameListResponse.Data = filteredData

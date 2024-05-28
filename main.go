@@ -25,7 +25,7 @@ func main() {
 
 	// Start the scheduler to fetch games data periodically
 	prematchData := &grpc.PrematchData{}                                        // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartPrematchCronJob(gamesClient, prematchData, "30 * * * *")     // Runs every 3 hours
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "36 * * * *")     // Runs every 3 hours
 	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
 	oddsChannel := make(chan *pb.LiveOddsData)
@@ -33,7 +33,7 @@ func main() {
 
 	tournamnets, _ := repositories.TournamentsFindAll()
 	for _, tournament := range tournamnets {
-		url := fmt.Sprintf("%s/api/v2/stream/odds?sportsbooks=bwin&league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
+		url := fmt.Sprintf("%s/api/v2/stream/odds?sportsbooks=betsson&sportsbooks=bet365&sportsbooks=1XBet&sportsbooks=Pinnacle&league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
 		wg.Add(1)
 		go grpc.ListenToStream(url, oddsChannel, wg)
 	}

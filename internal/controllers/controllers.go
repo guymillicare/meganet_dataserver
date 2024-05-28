@@ -16,6 +16,7 @@ import (
 
 func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 	eventId := chi.URLParam(r, "eventId")
+	var err error
 
 	ctx := context.Background()
 
@@ -29,7 +30,7 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 
 	if outcomes == nil {
 		// If outcomes are not found in cache, fetch from Redis
-		outcomes, err := fetchOutcomesFromRedis(ctx, eventId)
+		outcomes, err = fetchOutcomesFromRedis(ctx, eventId)
 		if err != nil {
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, map[string]string{"error": fmt.Sprintf("Error fetching outcomes from Redis: %v", err)})
@@ -37,7 +38,7 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Cache fetched outcomes
-		if err := cacheOutcomes(ctx, eventId, outcomes); err != nil {
+		if err = cacheOutcomes(ctx, eventId, outcomes); err != nil {
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, map[string]string{"error": fmt.Sprintf("Error caching outcomes: %v", err)})
 			return
