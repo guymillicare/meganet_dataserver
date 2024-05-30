@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sportsbook-backend/internal/config"
 	"sportsbook-backend/internal/database"
@@ -11,7 +12,12 @@ import (
 	"sportsbook-backend/internal/routes"
 	"sportsbook-backend/internal/scheduler"
 	"sportsbook-backend/pkg/client"
+	"strings"
 	"sync"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/render"
 )
 
 func main() {
@@ -40,9 +46,14 @@ func main() {
 	// Start the gRPC server
 	grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel)
 	// Start the HTTP server
-	router := routes.SetupRouter()
-	fmt.Printf("Using port %d\n", 9000)
-	http.ListenAndServe(":9000", router)
+	handler := SetupHttpHandler(cfg.APICorsAllowedOrigins)
+	port := 9000
+	fmt.Printf("Using port %d\n", port)
+
+	err := http.ListenAndServe(fmt.Sprintf(":%d", port), handler)
+	if err != nil {
+		log.Fatalf("Failed to start HTTPS server: %v", err)
+	}
 
 }
 
@@ -52,4 +63,25 @@ func Preload() {
 	repositories.TournamentsPreload()
 	repositories.SportEventsPreload()
 	repositories.MarketConstantsPreload()
+}
+
+func SetupHttpHandler(APICorsAllowedOrigins string) *chi.Mux {
+	r := chi.NewRouter()
+
+	// r.Use(middleware.UserContext) // add ctx["auth-user"] = user
+	// r.Use(middleware.UserTracking)
+	r.Use(render.SetContentType(render.ContentTypeJSON))
+
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   strings.Split(APICorsAllowedOrigins, ","),
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, // Maximum value not ignored by any of major browsers
+	}))
+
+	routes.SetupRouter(r)
+
+	return r
 }

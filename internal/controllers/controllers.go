@@ -185,13 +185,17 @@ func GetSportEventsWithOdds(w http.ResponseWriter, r *http.Request) {
 	offset := page * limit
 
 	// sportEvents, err := repositories.SportEventsFindByFilters(int32(currentUser.SystemId), 1, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
-	sportEvents, _ := repositories.SportEventsFindByFilters(56, 1, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
+	sportEvents, _ := repositories.SportEventsFindByFilters(55, 1, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
+	var results []*types.SportEventOddsItem
 	for _, event := range sportEvents {
 		outcomes, _ := getOutcomes(strconv.Itoa(int(event.Id)))
-		event.Outcome = outcomes
+		var entity types.SportEventOddsItem
+		entity.SportEvent = event
+		entity.Outcome = outcomes
+		results = append(results, &entity)
 	}
 
 	render.Render(w, r, &types.SportEventListResponse{
-		SportEventList: sportEvents,
+		SportEventList: results,
 	})
 }

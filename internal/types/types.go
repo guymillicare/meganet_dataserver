@@ -151,7 +151,7 @@ type OutcomeListResponse struct {
 
 type SportEventListResponse struct {
 	GenericResponse
-	SportEventList []*SportEventFullItem `json:"sportEventList"`
+	SportEventList []*SportEventOddsItem `json:"sportEventList"`
 }
 
 type GameScoreResponse struct {
@@ -226,14 +226,18 @@ type GameScoreResponse struct {
 }
 
 type SportEventFullItem struct {
-	Id             int32          `json:"id"`
-	Name           string         `json:"name"`
-	StartAt        time.Time      `json:"start_at"`
-	Active         bool           `json:"active"`
-	SportName      string         `json:"sport_name"`
-	CountryName    string         `json:"country_name"`
-	TournamentName string         `json:"tournament_name"`
-	HomeScore      int32          `json:"home_score"`
-	AwayScore      int32          `json:"away_score"`
-	Outcome        []*OutcomeItem `json:"outcome"`
+	Id             int32     `json:"id"`
+	Name           string    `json:"name"`
+	StartAt        time.Time `json:"start_at"`
+	Active         bool      `json:"active"`
+	SportName      string    `json:"sport_name"`
+	CountryName    string    `json:"country_name"`
+	TournamentName string    `json:"tournament_name"`
+	HomeScore      int32     `json:"home_score"`
+	AwayScore      int32     `json:"away_score"`
+}
+
+type SportEventOddsItem struct {
+	SportEvent *SportEventFullItem `json:"sportEvent"`
+	Outcome    []*OutcomeItem      `json:"outcome"`
 }

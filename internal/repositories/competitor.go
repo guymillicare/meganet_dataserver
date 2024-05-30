@@ -5,30 +5,36 @@ import (
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/types"
+
+	"gorm.io/gorm/clause"
 )
 
 // FetchAllGames retrieves all games from the database
 func CreateCompetitor(prematch *proto.Prematch) (*types.CompetitorItem, error) {
+	// Fetch sport details once
+	sport, err := GetSportFromRedis(prematch.Sport)
+	if err != nil {
+		return nil, fmt.Errorf("GetSportFromRedis: %v", err)
+	}
+
+	teams := []string{prematch.HomeTeam, prematch.AwayTeam}
 	competitor := &types.CompetitorItem{}
-	homeCompetitor, _ := CompetitorFindByName(prematch.HomeTeam)
-	if homeCompetitor == nil {
-		competitor.Name = prematch.HomeTeam
-		sport, _ := GetSportFromRedis(prematch.Sport)
-		competitor.SportId = sport.ReferenceId
-		if err := database.DB.Table("competitors").Create(&competitor).Error; err != nil {
-			return competitor, fmt.Errorf("CompetitorCreate: %v", err)
+	for _, team := range teams {
+		competitor = &types.CompetitorItem{
+			Name:    team,
+			SportId: sport.ReferenceId,
+		}
+
+		err := database.DB.Table("competitors").Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "name"}},
+			DoNothing: true,
+		}).Create(&competitor).Error
+
+		if err != nil {
+			return nil, fmt.Errorf("CompetitorCreate: %v", err)
 		}
 	}
-	competitor = &types.CompetitorItem{}
-	awayCompetitor, _ := CompetitorFindByName(prematch.HomeTeam)
-	if awayCompetitor == nil {
-		competitor.Name = prematch.AwayTeam
-		sport, _ := GetSportFromRedis(prematch.Sport)
-		competitor.SportId = sport.ReferenceId
-		if err := database.DB.Table("competitors").Create(&competitor).Error; err != nil {
-			return competitor, fmt.Errorf("CompetitorCreate: %v", err)
-		}
-	}
+
 	return competitor, nil
 }
 

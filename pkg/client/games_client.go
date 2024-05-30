@@ -24,8 +24,6 @@ func NewGamesClient(baseURL string, apiKey string) *GamesClient {
 
 func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 	var responses proto.ListPrematchResponse
-	// sports, _ := repositories.SportsFindAll()
-	// for _, sport := range sports {
 	url := fmt.Sprintf(
 		"%s/api/v2/games?key=%s",
 		gc.BaseURL,

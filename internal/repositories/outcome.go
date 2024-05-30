@@ -17,7 +17,7 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 		return nil, nil
 	}
 	sportRefId := sport.ReferenceId
-	sportId := sport.Id
+	// sportId := sport.Id
 	newMarketOutcome := &types.MarketOutcomeItem{}
 	const (
 		homeReplacement = "Home"
@@ -34,7 +34,7 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 		}
 
 		createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName)
-		createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds)
+		// createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds)
 		createOrUpdateOutcome(odds, sportEvent, marketConstant, oddsName)
 	}
 
@@ -42,30 +42,30 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 }
 
 func createOrUpdateOutcome(odds *proto.Odds, sportEvent *types.SportEventItem, marketConstant *types.MarketConstantItem, oddsName string) error {
-	outcome, _ := OutcomeFind(sportEvent.Id, marketConstant.Id, oddsName)
+	// outcome, _ := OutcomeFind(sportEvent.Id, marketConstant.Id, oddsName)
 	outcomeConstant, _ := OutcomeConstantFind(odds.MarketName + ":" + oddsName)
-	if outcome == nil {
-		outcome = &types.OutcomeItem{
-			ReferenceId: outcomeConstant.ReferenceId,
-			EventId:     sportEvent.Id,
-			MarketId:    marketConstant.Id,
-			Name:        oddsName,
-			Odds:        odds.Price,
-			Active:      true,
-			CreatedAt:   time.Now().UTC(),
-			UpdatedAt:   time.Now().UTC(),
-		}
-		if err := database.DB.Table("outcomes").Create(outcome).Error; err != nil {
-			return fmt.Errorf("OutcomeCreate: %v", err)
-		}
-	} else if outcome.Odds != odds.Price {
-		outcome.Odds = odds.Price
-
-		outcome.UpdatedAt = time.Now().UTC()
-		if err := database.DB.Table("outcomes").Save(outcome).Error; err != nil {
-			return fmt.Errorf("OutcomeSave: %v", err)
-		}
+	// if outcome == nil {
+	outcome := &types.OutcomeItem{
+		ReferenceId: outcomeConstant.ReferenceId,
+		EventId:     sportEvent.Id,
+		MarketId:    marketConstant.Id,
+		Name:        oddsName,
+		Odds:        odds.Price,
+		Active:      true,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
 	}
+	// 	if err := database.DB.Table("outcomes").Create(outcome).Error; err != nil {
+	// 		return fmt.Errorf("OutcomeCreate: %v", err)
+	// 	}
+	// } else if outcome.Odds != odds.Price {
+	// 	outcome.Odds = odds.Price
+
+	// 	outcome.UpdatedAt = time.Now().UTC()
+	// 	if err := database.DB.Table("outcomes").Save(outcome).Error; err != nil {
+	// 		return fmt.Errorf("OutcomeSave: %v", err)
+	// 	}
+	// }
 	if err := SaveOutcomeToRedis(outcome); err != nil {
 		return err
 	}
