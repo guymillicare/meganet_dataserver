@@ -24,11 +24,16 @@ func NewGamesClient(baseURL string, apiKey string) *GamesClient {
 
 func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 	var responses proto.ListPrematchResponse
+	// Calculate start_date_before as two months from now
+	startDateBefore := time.Now().AddDate(0, 2, 0).Format("2006-01-02")
+
 	url := fmt.Sprintf(
-		"%s/api/v2/games?key=%s",
+		"%s/api/v2/games?key=%s&start_date_before=%s&include_team_info=true&include_statsperform_ids=true",
 		gc.BaseURL,
 		gc.APIKey,
+		startDateBefore,
 	)
+
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -101,6 +106,7 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 
 	// Filter out games with empty odds
 	var filteredData []*proto.Prematch
+	var allCompetitors []*types.CompetitorItem
 	for _, prematch := range gameListResponse.Data {
 		ctx := context.Background()
 		key := fmt.Sprintf("fetched:match:%s", prematch.Id)
@@ -112,7 +118,11 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 		if odds, ok := oddsMap[prematch.Id]; ok && len(odds) > 0 {
 			prematch.Odds = odds
 			filteredData = append(filteredData, prematch)
-			repositories.CreateCompetitor(prematch)
+
+			// Collect competitors
+			competitors := repositories.PrepareCompetitors(prematch)
+			allCompetitors = append(allCompetitors, competitors...)
+
 			sportEvent, _ := repositories.CreateOrUpdateSportEvent(prematch)
 			repositories.CreateOutcome(prematch, sportEvent)
 			// Define the expiration time as 90 days
@@ -122,6 +132,11 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 				fmt.Println("Error saving OutcomeItem to Redis:", err)
 			}
 		}
+	}
+	// Batch insert all competitors
+	err = repositories.CreateCompetitorsBatch(allCompetitors)
+	if err != nil {
+		fmt.Println("Error batch inserting competitors:", err)
 	}
 	gameListResponse.Data = filteredData
 
@@ -166,7 +181,7 @@ func (gc *GamesClient) FetchStatus() {
 				url += fmt.Sprintf("&game_id=%s", gameID)
 			}
 
-			fmt.Println(url)
+			// fmt.Println(url)
 			resp, err := http.Get(url)
 			if err != nil {
 				return
@@ -190,6 +205,8 @@ func (gc *GamesClient) FetchStatus() {
 		}(i)
 	}
 	wg.Wait()
+
+	var allSportEvents []*types.SportEventItem
 	for _, sportEvent := range sportEvents {
 		if status, ok := scoreMap[sportEvent.ReferenceId]; ok {
 			sportEvent.Status = status
@@ -203,6 +220,10 @@ func (gc *GamesClient) FetchStatus() {
 		if awayScore, ok := scoreAwayMap[sportEvent.ReferenceId]; ok {
 			sportEvent.AwayScore = int32(awayScore)
 		}
-		repositories.UpdateSportEventStatus(sportEvent)
+		// repositories.UpdateSportEventStatus(sportEvent)
+
+		allSportEvents = append(allSportEvents, sportEvent)
 	}
+
+	repositories.UpdateSportEvents(allSportEvents)
 }

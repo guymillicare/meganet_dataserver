@@ -34,7 +34,10 @@ message Prematch {
     string status = 8;
     string sport = 9;
     string league = 10;
-    repeated Odds odds = 11;
+    TeamInfo home_team_info = 11;
+    TeamInfo away_team_info = 12;
+    string statsperfomr_id = 13;
+    repeated Odds odds = 14;
 }
 
 message Odds {
@@ -56,6 +59,16 @@ message Odds {
     string normalized_selection = 16;
     string selection_line = 17;
     double selection_points = 18;
+}
+
+message TeamInfo {
+    string id = 1;
+    string team_name = 2;
+    string team_city = 3;
+    string team_mascot = 4;
+    string team_abbreviation = 5;
+    string sport = 6;
+    string league = 7;
 }
 
 message LiveOddsRequest {

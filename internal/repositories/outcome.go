@@ -9,6 +9,8 @@ import (
 	"sportsbook-backend/internal/types"
 	"strings"
 	"time"
+
+	"gorm.io/gorm/clause"
 )
 
 func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (*types.MarketOutcomeItem, error) {
@@ -24,6 +26,9 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 		awayReplacement = "Away"
 	)
 
+	var newMarketOutcomes []*types.MarketOutcomeItem
+	var newOutcomeConstants []*types.OutcomeConstantItem
+
 	for _, odds := range prematch.Odds {
 		oddsName := odds.Name
 		oddsName = strings.Replace(oddsName, prematch.HomeTeam, homeReplacement, -1)
@@ -33,8 +38,62 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 			continue
 		}
 
-		createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName)
+		// marketOutcome, _ := MarketOutcomeFindByMarketAndOutcome(odds.MarketName, oddsName)
+		// if marketOutcome == nil {
+		newOutcomeConstant := &types.OutcomeConstantItem{
+			ReferenceId: odds.MarketName + ":" + oddsName,
+			Name:        oddsName,
+		}
+		newOutcomeConstants = append(newOutcomeConstants, newOutcomeConstant)
+
+		newMarketOutcome := &types.MarketOutcomeItem{
+			MarketRefId:       marketConstant.ReferenceId,
+			MarketDescription: odds.MarketName,
+			OutcomeRefId:      newOutcomeConstant.ReferenceId,
+			OutcomeName:       oddsName,
+			SportRefId:        sportRefId,
+		}
+		newMarketOutcomes = append(newMarketOutcomes, newMarketOutcome)
+		// }
+
+		// createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName)
 		// createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds)
+	}
+
+	if len(newOutcomeConstants) > 0 {
+		// if err := database.DB.Table("outcome_constants").Create(&newOutcomeConstants).Error; err != nil {
+		// 	fmt.Printf("OutcomeConstantsCreate: %v\n", err)
+		// 	return nil, err
+		// }
+		if err := database.DB.Table("outcome_constants").Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "reference_id"}},
+			DoNothing: true,
+		}).Create(&newOutcomeConstants).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	if len(newMarketOutcomes) > 0 {
+		// if err := database.DB.Table("market_outcomes").Create(&newMarketOutcomes).Error; err != nil {
+		// 	fmt.Printf("MarketOutcomeCreate: %v\n", err)
+		// 	return nil, err
+		// }
+		if err := database.DB.Table("market_outcomes").Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "market_ref_id"}, {Name: "outcome_ref_id"}},
+			DoNothing: true,
+		}).Create(&newMarketOutcomes).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	for _, odds := range prematch.Odds {
+		oddsName := odds.Name
+		oddsName = strings.Replace(oddsName, prematch.HomeTeam, homeReplacement, -1)
+		oddsName = strings.Replace(oddsName, prematch.AwayTeam, awayReplacement, -1)
+		marketConstant, _ := GetMarketConstantFromRedis(odds.MarketName)
+		if marketConstant == nil {
+			continue
+		}
 		createOrUpdateOutcome(odds, sportEvent, marketConstant, oddsName)
 	}
 

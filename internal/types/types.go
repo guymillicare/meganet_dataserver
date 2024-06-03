@@ -55,21 +55,22 @@ type CompetitorItem struct {
 }
 
 type SportEventItem struct {
-	Id           int32     `json:"id"`
-	ProviderId   int32     `json:"provider_id"`
-	ReferenceId  string    `json:"reference_id"`
-	SportId      string    `json:"sport_id"`
-	CountryId    string    `json:"country_id"`
-	TournamentId string    `json:"tournament"`
-	Name         string    `json:"name"`
-	StartAt      string    `json:"start_at"`
-	Status       string    `json:"status"`
-	Active       int32     `json:"active"`
-	HomeScore    int32     `json:"home_score"`
-	AwayScore    int32     `json:"away_score"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	DeletedAt    time.Time `json:"-"`
+	Id             int32     `json:"id"`
+	ProviderId     int32     `json:"provider_id"`
+	ReferenceId    string    `json:"reference_id"`
+	SportId        string    `json:"sport_id"`
+	CountryId      string    `json:"country_id"`
+	TournamentId   string    `json:"tournament"`
+	Name           string    `json:"name"`
+	StartAt        string    `json:"start_at"`
+	Status         string    `json:"status"`
+	Active         int32     `json:"active"`
+	HomeScore      int32     `json:"home_score"`
+	AwayScore      int32     `json:"away_score"`
+	StatsperformId string    `json:"statsperform_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	DeletedAt      time.Time `json:"-"`
 }
 
 type MarketOutcomeItem struct {

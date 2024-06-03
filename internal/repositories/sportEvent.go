@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"gorm.io/gorm/clause"
 )
 
 func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, error) {
@@ -44,6 +45,7 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 		sportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
+		sportEvent.StatsperformId = prematch.StatsperfomId
 		if err := database.DB.Table("sport_events").Create(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("CreateSportEvent: %v", err)
 		}
@@ -71,6 +73,22 @@ func UpdateSportEventStatus(event *types.SportEventItem) {
 	ctx := context.Background()
 	if err := saveSportEventToRedis(ctx, event); err != nil {
 		fmt.Printf("CreateOrUpdateSportEvent: error saving sport event to Redis: %v\n", err)
+	}
+}
+
+func UpdateSportEvents(sportEvents []*types.SportEventItem) {
+	if err := database.DB.Table("sport_events").Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "reference_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"start_at", "status", "home_score", "away_score"}),
+	}).Create(&sportEvents).Error; err != nil {
+		fmt.Printf("UpdateSportEventStatus: %v\n", err)
+	}
+	ctx := context.Background()
+	for _, sportEvent := range sportEvents {
+		if err := saveSportEventToRedis(ctx, sportEvent); err != nil {
+			fmt.Printf("saveSportEventToRedis: error saving sportEvent to Redis: %v\n", err)
+			continue
+		}
 	}
 }
 

@@ -9,33 +9,20 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// FetchAllGames retrieves all games from the database
-func CreateCompetitor(prematch *proto.Prematch) (*types.CompetitorItem, error) {
-	// Fetch sport details once
-	sport, err := GetSportFromRedis(prematch.Sport)
-	if err != nil {
-		return nil, fmt.Errorf("GetSportFromRedis: %v", err)
-	}
-
-	teams := []string{prematch.HomeTeam, prematch.AwayTeam}
-	competitor := &types.CompetitorItem{}
-	for _, team := range teams {
-		competitor = &types.CompetitorItem{
-			Name:    team,
-			SportId: sport.ReferenceId,
-		}
-
+// CreateCompetitorsBatch inserts competitors into the database in a single batch.
+func CreateCompetitorsBatch(competitors []*types.CompetitorItem) error {
+	if len(competitors) > 0 {
 		err := database.DB.Table("competitors").Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "name"}},
 			DoNothing: true,
-		}).Create(&competitor).Error
+		}).Create(&competitors).Error
 
 		if err != nil {
-			return nil, fmt.Errorf("CompetitorCreate: %v", err)
+			return fmt.Errorf("CompetitorCreateBatch: %v", err)
 		}
 	}
 
-	return competitor, nil
+	return nil
 }
 
 func CompetitorFindByName(name string) (*types.CompetitorItem, error) {
@@ -47,4 +34,25 @@ func CompetitorFindByName(name string) (*types.CompetitorItem, error) {
 		return competitor, fmt.Errorf("CompetitorFindOne: %v", err)
 	}
 	return competitor, nil
+}
+
+// PrepareCompetitors collects competitors from a prematch
+func PrepareCompetitors(prematch *proto.Prematch) []*types.CompetitorItem {
+	sport, err := GetSportFromRedis(prematch.Sport)
+	if err != nil {
+		fmt.Println("GetSportFromRedis:", err)
+		return nil
+	}
+
+	teams := []string{prematch.HomeTeam, prematch.AwayTeam}
+	competitors := make([]*types.CompetitorItem, len(teams))
+
+	for i, team := range teams {
+		competitors[i] = &types.CompetitorItem{
+			Name:    team,
+			SportId: sport.ReferenceId,
+		}
+	}
+
+	return competitors
 }
