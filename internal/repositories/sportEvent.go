@@ -45,14 +45,14 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 		sportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
-		sportEvent.StatsperformId = prematch.StatsperfomrId
+		sportEvent.StatsperformId = prematch.StatsperformId
 		if err := database.DB.Table("sport_events").Create(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("CreateSportEvent: %v", err)
 		}
 	} else {
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
-		sportEvent.StatsperformId = prematch.StatsperfomrId
+		sportEvent.StatsperformId = prematch.StatsperformId
 		if err := database.DB.Table("sport_events").Save(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("UpdateSportEvent: %v", err)
 		}
