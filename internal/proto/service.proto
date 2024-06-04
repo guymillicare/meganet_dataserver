@@ -36,7 +36,7 @@ message Prematch {
     string league = 10;
     TeamInfo home_team_info = 11;
     TeamInfo away_team_info = 12;
-    string statsperfomr_id = 13;
+    string statsperform_id = 13;
     repeated Odds odds = 14;
 }
 
