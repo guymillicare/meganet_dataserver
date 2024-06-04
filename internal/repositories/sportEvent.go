@@ -52,6 +52,7 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 	} else {
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
+		sportEvent.StatsperformId = prematch.StatsperfomrId
 		if err := database.DB.Table("sport_events").Save(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("UpdateSportEvent: %v", err)
 		}

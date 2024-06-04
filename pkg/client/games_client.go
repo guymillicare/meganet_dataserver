@@ -120,7 +120,7 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 			filteredData = append(filteredData, prematch)
 
 			// Collect competitors
-			competitors := repositories.PrepareCompetitors(prematch)
+			competitors := repositories.PrepareCompetitors(gc.BaseURL, gc.APIKey, prematch)
 			allCompetitors = append(allCompetitors, competitors...)
 
 			sportEvent, _ := repositories.CreateOrUpdateSportEvent(prematch)

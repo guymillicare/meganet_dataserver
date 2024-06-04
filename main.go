@@ -25,13 +25,13 @@ func main() {
 
 	database.InitPostgresDB(cfg)
 	database.InitRedis(cfg)
-	Preload()
+	// Preload()
 
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
 
 	// Start the scheduler to fetch games data periodically
 	prematchData := &grpc.PrematchData{}                                        // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartPrematchCronJob(gamesClient, prematchData, "36 * * * *")     // Runs every 3 hours
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "6 * * * *")      // Runs every 3 hours
 	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
 	oddsChannel := make(chan *pb.LiveOddsData)

@@ -48,6 +48,7 @@ type CompetitorItem struct {
 	CountryId   int32     `json:"country_id"`
 	Name        string    `json:"name"`
 	Abbr        string    `json:"abbr"`
+	Logo        string    `json:"logo"`
 	SportId     string    `json:"sport_id`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -153,6 +154,19 @@ type OutcomeListResponse struct {
 type SportEventListResponse struct {
 	GenericResponse
 	SportEventList []*SportEventOddsItem `json:"sportEventList"`
+}
+
+type TeamInfoResponse struct {
+	Data []struct {
+		Id               string `json:"id"`
+		TeamName         string `json:"team_name"`
+		TeamCity         string `json:"team_city"`
+		TeamMascot       string `json:"team_mascot"`
+		TeamAbbreviation string `json:"team_abbreviation"`
+		Sport            string `json:"sport"`
+		League           string `json:"league"`
+		Logo             string `json:"logo"`
+	} `json:"data"`
 }
 
 type GameScoreResponse struct {
