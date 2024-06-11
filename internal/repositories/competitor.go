@@ -52,6 +52,9 @@ func PrepareCompetitors(BaseURL string, APIKey string, prematch *proto.Prematch)
 		fmt.Println("GetSportFromRedis:", err)
 		return nil
 	}
+	if prematch.HomeTeamInfo == nil || prematch.AwayTeamInfo == nil {
+		return nil
+	}
 
 	url := fmt.Sprintf(
 		"%s/api/v2/teams?key=%s&id=%s&id=%s&include_logos=true",

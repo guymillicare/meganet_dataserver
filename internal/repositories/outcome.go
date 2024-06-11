@@ -102,7 +102,11 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 
 func createOrUpdateOutcome(odds *proto.Odds, sportEvent *types.SportEventItem, marketConstant *types.MarketConstantItem, oddsName string) error {
 	// outcome, _ := OutcomeFind(sportEvent.Id, marketConstant.Id, oddsName)
-	outcomeConstant, _ := OutcomeConstantFind(odds.MarketName + ":" + oddsName)
+	outcomeConstant, err := OutcomeConstantFind(odds.MarketName + ":" + oddsName)
+	if err != nil {
+		fmt.Printf("Error finding outcome constant: %v\n", err)
+		return err
+	}
 	// if outcome == nil {
 	outcome := &types.OutcomeItem{
 		ReferenceId: outcomeConstant.ReferenceId,
@@ -132,35 +136,35 @@ func createOrUpdateOutcome(odds *proto.Odds, sportEvent *types.SportEventItem, m
 }
 
 func SaveOutcomeToRedis(outcome *types.OutcomeItem) error {
-	outcomeJSON, err := json.Marshal(outcome)
-	if err != nil {
-		fmt.Println("Error marshaling OutcomeItem:", err)
-		return err
-	}
+	// outcomeJSON, err := json.Marshal(outcome)
+	// if err != nil {
+	// 	fmt.Println("Error marshaling OutcomeItem:", err)
+	// 	return err
+	// }
 
 	ctx := context.Background()
-	key := fmt.Sprintf("event:%d-outcome:%s", outcome.EventId, outcome.ReferenceId)
+	// key := fmt.Sprintf("event:%d-outcome:%s", outcome.EventId, outcome.ReferenceId)
 
-	// Define the expiration time as 90 days
-	expiration := 90 * 24 * time.Hour
+	// // Define the expiration time as 90 days
+	// expiration := 90 * 24 * time.Hour
 
-	// Save the outcome to Redis
-	err = database.RedisDB.Set(ctx, key, outcomeJSON, expiration).Err()
-	if err != nil {
-		fmt.Println("Error saving OutcomeItem to Redis:", err)
-		return err
-	}
+	// // Save the outcome to Redis
+	// err = database.RedisDB.Set(ctx, key, outcomeJSON, expiration).Err()
+	// if err != nil {
+	// 	fmt.Println("Error saving OutcomeItem to Redis:", err)
+	// 	return err
+	// }
 
 	// Update the cache with the new outcome
 	cacheKey := fmt.Sprintf("event:%d-outcomes", outcome.EventId)
-	err = appendOutcomeToCache(ctx, cacheKey, outcome)
+	err := appendOutcomeToCache(ctx, cacheKey, outcome)
 	if err != nil {
 		fmt.Println("Error updating outcome cache:", err)
-		// Rollback the outcome from Redis
-		rollbackErr := database.RedisDB.Del(ctx, key).Err()
-		if rollbackErr != nil {
-			fmt.Println("Error rolling back OutcomeItem from Redis:", rollbackErr)
-		}
+		// // Rollback the outcome from Redis
+		// rollbackErr := database.RedisDB.Del(ctx, key).Err()
+		// if rollbackErr != nil {
+		// 	fmt.Println("Error rolling back OutcomeItem from Redis:", rollbackErr)
+		// }
 		return err
 	}
 
@@ -169,14 +173,11 @@ func SaveOutcomeToRedis(outcome *types.OutcomeItem) error {
 
 func appendOutcomeToCache(ctx context.Context, cacheKey string, outcome *types.OutcomeItem) error {
 	// Attempt to fetch cached outcomes
-	cachedOutcomesJSON, err := database.RedisDB.Get(ctx, cacheKey).Bytes()
-	if err != nil {
-		return nil
-	}
+	cachedOutcomesJSON, _ := database.RedisDB.Get(ctx, cacheKey).Bytes()
 	if cachedOutcomesJSON == nil {
 		// If cache miss, initialize empty array
-		return nil
-		// cachedOutcomesJSON = []byte("[]")
+		// return nil
+		cachedOutcomesJSON = []byte("[]")
 	}
 
 	// Deserialize cached outcomes

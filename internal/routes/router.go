@@ -16,5 +16,6 @@ func SetupRouter(router *chi.Mux) {
 		r.Get("/events/{betType}/{sportId}", controllers.GetSportEventsWithOdds)
 		r.Get("/events/{betType}/{sportId}/{countryId}", controllers.GetSportEventsWithOdds)
 		r.Get("/events/{betType}/{sportId}/{countryId}/{leagueId}", controllers.GetSportEventsWithOdds)
+		r.Post("/events", controllers.GetSportEventsWithLiveOdds)
 	})
 }

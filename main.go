@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,9 +12,12 @@ import (
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/routes"
 	"sportsbook-backend/internal/scheduler"
+	"sportsbook-backend/internal/types"
 	"sportsbook-backend/pkg/client"
+	"sportsbook-backend/pkg/queue"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -25,13 +29,20 @@ func main() {
 
 	database.InitPostgresDB(cfg)
 	database.InitRedis(cfg)
-	// Preload()
+	Preload()
+
+	// Initialize RabbitMQ
+	rabbitMQ, err := queue.NewRabbitMQ("live_odds_queue")
+	if err != nil {
+		log.Fatalf("Failed to initialize RabbitMQ: %v", err)
+	}
+	defer rabbitMQ.Close()
 
 	gamesClient := client.NewGamesClient(cfg.ThirdPartyAPIBaseURL, cfg.APIKey)
 
 	// Start the scheduler to fetch games data periodically
 	prematchData := &grpc.PrematchData{}                                        // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartPrematchCronJob(gamesClient, prematchData, "6 * * * *")      // Runs every 3 hours
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "0 */3 * * *")    // Runs every 3 hours
 	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
 	oddsChannel := make(chan *pb.LiveOddsData)
@@ -41,8 +52,14 @@ func main() {
 	for _, tournament := range tournamnets {
 		url := fmt.Sprintf("%s/api/v2/stream/odds?sportsbooks=betsson&sportsbooks=bet365&sportsbooks=1XBet&sportsbooks=Pinnacle&league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
 		wg.Add(1)
-		go grpc.ListenToStream(url, oddsChannel, wg)
+		go grpc.ListenToStream(url, oddsChannel, wg, rabbitMQ)
 	}
+
+	// Start the RabbitMQ consumer in a separate goroutine
+	go func() {
+		consumeRabbitMQ(rabbitMQ, oddsChannel)
+	}()
+
 	// Start the gRPC server
 	grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel)
 	// Start the HTTP server
@@ -50,11 +67,10 @@ func main() {
 	port := 9000
 	fmt.Printf("Using port %d\n", port)
 
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), handler)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", port), handler)
 	if err != nil {
 		log.Fatalf("Failed to start HTTPS server: %v", err)
 	}
-
 }
 
 func Preload() {
@@ -84,4 +100,67 @@ func SetupHttpHandler(APICorsAllowedOrigins string) *chi.Mux {
 	routes.SetupRouter(r)
 
 	return r
+}
+
+func consumeRabbitMQ(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveOddsData) {
+	msgs, err := rabbitMQ.Consume()
+	if err != nil {
+		log.Fatalf("Failed to consume messages: %v", err)
+	}
+
+	for d := range msgs {
+		var oddsData types.OddsStream
+		err := json.Unmarshal(d.Body, &oddsData)
+		if err != nil {
+			log.Printf("Error decoding JSON: %v", err)
+			continue
+		}
+
+		// Process the oddsData
+		for _, odds := range oddsData.Data {
+			sportEvent, _ := repositories.GetSportEventFromRedis(odds.GameId)
+			marketConstant, _ := repositories.GetMarketConstantFromRedis(odds.BetType)
+			if marketConstant != nil && sportEvent != nil {
+				outcome := &types.OutcomeItem{
+					ReferenceId: odds.BetType + ":" + odds.BetName,
+					EventId:     sportEvent.Id,
+					MarketId:    marketConstant.Id,
+					Name:        odds.BetName,
+					Odds:        odds.BetPrice,
+					Active:      oddsData.Type == "odds",
+					CreatedAt:   time.Now().UTC(),
+					UpdatedAt:   time.Now().UTC(),
+				}
+				repositories.SaveOutcomeToRedis(outcome)
+
+				convertedOdds := &pb.Data{
+					BetName:         odds.BetName,
+					BetPoints:       odds.BetPoints,
+					BetPrice:        odds.BetPrice,
+					BetType:         odds.BetType,
+					GameId:          odds.GameId,
+					Id:              odds.Id,
+					IsLive:          odds.IsLive,
+					IsMain:          odds.IsMain,
+					League:          odds.League,
+					PlayerId:        odds.PlayerId,
+					Selection:       odds.Selection,
+					SelectionLine:   odds.SelectionLine,
+					SelectionPoints: odds.SelectionPoints,
+					Sport:           odds.Sport,
+					Sportsbook:      odds.Sportsbook,
+					Timestamp:       odds.Timestamp,
+				}
+
+				convertedOddsData := &pb.LiveOddsData{
+					EntryId: oddsData.EntryId,
+					Type:    oddsData.Type,
+					Data:    convertedOdds,
+				}
+				// Send live data to gRPC clients
+				oddsChannel <- convertedOddsData
+			}
+		}
+		fmt.Printf("Processed a message: %v\n", oddsData)
+	}
 }

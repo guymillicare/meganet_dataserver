@@ -156,6 +156,11 @@ type SportEventListResponse struct {
 	SportEventList []*SportEventOddsItem `json:"sportEventList"`
 }
 
+type SportEventsListResponse struct {
+	GenericResponse
+	SportEventsList []*SportEventsOddsItem `json:"sportEventsList"`
+}
+
 type TeamInfoResponse struct {
 	Data []struct {
 		Id               string `json:"id"`
@@ -242,6 +247,7 @@ type GameScoreResponse struct {
 
 type SportEventFullItem struct {
 	Id             int32     `json:"id"`
+	ReferenceId    string    `json:"reference_id"`
 	Name           string    `json:"name"`
 	StartAt        time.Time `json:"start_at"`
 	Active         bool      `json:"active"`
@@ -255,4 +261,9 @@ type SportEventFullItem struct {
 type SportEventOddsItem struct {
 	SportEvent *SportEventFullItem `json:"sportEvent"`
 	Outcome    []*OutcomeItem      `json:"outcome"`
+}
+
+type SportEventsOddsItem struct {
+	SportEvent *SportEventItem `json:"sportEvent"`
+	Outcome    []*OutcomeItem  `json:"outcome"`
 }

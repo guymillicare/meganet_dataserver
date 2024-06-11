@@ -23,6 +23,7 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 		sport, _ := GetSportFromRedis(prematch.Sport)
 		if sport == nil {
 			fmt.Print("SPORT", prematch.Sport)
+			return nil, nil
 		}
 		sportEvent.SportId = sport.ReferenceId
 		if prematch.League != "" {
@@ -162,9 +163,15 @@ func GetSportEventFromRedis(refId string) (*types.SportEventItem, error) {
 
 func SportEventsFindByFilters(systemId int32, providerId int, status string, sportId int32, countryId int32, tournamentId int32, offset int, limit int) ([]*types.SportEventFullItem, error) {
 	var result []*types.SportEventFullItem
+
+	sport_type := "prematch"
+	if status == "Live" {
+		sport_type = "live"
+	}
 	query := database.DB.
 		Table("sport_events").
 		Select("sport_events.id as id",
+			"sport_events.reference_id as reference_id",
 			"sport_events.name as name",
 			"sport_events.start_at as start_at",
 			"sports.name as sport_name",
@@ -174,11 +181,15 @@ func SportEventsFindByFilters(systemId int32, providerId int, status string, spo
 			"sport_events.away_score as away_score").
 		Joins("LEFT JOIN sports ON sports.id = sport_events.sport_id").
 		Joins("LEFT JOIN countries ON countries.id = sport_events.country_id").
-		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id").
-		Joins("LEFT JOIN system_sports ON system_sports.sport_id = sports.id").
-		Where("sport_events.provider_id=? AND sport_events.status = ?", providerId, status)
+		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id")
 	if systemId > 0 {
-		query = query.Where("system_sports.system_id=?", systemId)
+		query = query.Joins("JOIN (SELECT DISTINCT sport_id FROM system_sports WHERE system_sports.system_id = ? AND system_sports.type = ?) AS filtered_system_sports ON filtered_system_sports.sport_id = sports.id", systemId, sport_type)
+	}
+	query = query.Where("sport_events.provider_id=? AND sport_events.status = ?", providerId, status)
+	if systemId > 0 {
+		query = query.Joins("LEFT JOIN system_sports ON system_sports.sport_id = sports.id").
+			Where("sport_events.provider_id=? AND sport_events.status = ?", providerId, status).
+			Where("system_sports.system_id=?", systemId)
 	}
 	if sportId > 0 {
 		query = query.Where("sport_events.sport_id=?", sportId)

@@ -8,11 +8,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	pb "sportsbook-backend/internal/proto"
-	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
+	"sportsbook-backend/pkg/queue"
 
 	"google.golang.org/grpc"
 )
@@ -66,7 +65,7 @@ func StartGRPCServer(port string, oddsChannel chan *pb.LiveOddsData) {
 	log.Printf("gRPC server started")
 }
 
-func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.WaitGroup) {
+func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.WaitGroup, rabbitMQ *queue.RabbitMQ) {
 	defer wg.Done()
 
 	client := &http.Client{}
@@ -76,12 +75,42 @@ func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.Wait
 	}
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
+	// scanner := bufio.NewScanner(resp.Body)
+	// for scanner.Scan() {
+	// 	line := scanner.Text()
+	// 	if !strings.HasPrefix(line, "data: {") {
+	// 		continue
+	// 	}
+
+	// 	jsonStr := strings.TrimPrefix(line, "data: ")
+	// 	var oddsData types.OddsStream
+	// 	if err := json.Unmarshal([]byte(jsonStr), &oddsData); err != nil {
+	// 		log.Printf("Error unmarshaling JSON: %v", err)
+	// 		continue
+	// 	}
+
+	// 	if err == nil {
+	// 		rabbitMQ.Publish([]byte(jsonStr))
+	// 	}
+
+	// }
+
+	// if err := scanner.Err(); err != nil {
+	// 	log.Fatalf("Error reading from stream: %v", err)
+	// }
+
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, _ := reader.ReadString('\n')
 		if !strings.HasPrefix(line, "data: {") {
 			continue
 		}
+		// if err != nil {
+		// 	if err == io.EOF {
+		// 		break
+		// 	}
+		// 	log.Fatalf("Error reading from stream: %v", err)
+		// }
 
 		jsonStr := strings.TrimPrefix(line, "data: ")
 		var oddsData types.OddsStream
@@ -90,54 +119,6 @@ func ListenToStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.Wait
 			continue
 		}
 
-		// Convert types.OddsStream to pb.LiveOddsData as needed before sending
-		for _, odds := range oddsData.Data {
-			convertedOdds := &pb.Data{
-				BetName:         odds.BetName,
-				BetPoints:       odds.BetPoints,
-				BetPrice:        odds.BetPrice,
-				BetType:         odds.BetType,
-				GameId:          odds.GameId,
-				Id:              odds.Id,
-				IsLive:          odds.IsLive,
-				IsMain:          odds.IsMain,
-				League:          odds.League,
-				PlayerId:        odds.PlayerId,
-				Selection:       odds.Selection,
-				SelectionLine:   odds.SelectionLine,
-				SelectionPoints: odds.SelectionPoints,
-				Sport:           odds.Sport,
-				Sportsbook:      odds.Sportsbook,
-				Timestamp:       odds.Timestamp,
-			}
-
-			sportEvent, _ := repositories.GetSportEventFromRedis(odds.GameId)
-			marketConstant, _ := repositories.GetMarketConstantFromRedis(odds.BetType)
-			if marketConstant != nil && sportEvent != nil {
-				outcome := &types.OutcomeItem{
-					ReferenceId: odds.BetType + ":" + odds.BetName,
-					EventId:     sportEvent.Id,
-					MarketId:    marketConstant.Id,
-					Name:        odds.BetName,
-					Odds:        odds.BetPrice,
-					Active:      oddsData.Type == "odds",
-					CreatedAt:   time.Now().UTC(),
-					UpdatedAt:   time.Now().UTC(),
-				}
-				repositories.SaveOutcomeToRedis(outcome)
-				convertedOddsData := &pb.LiveOddsData{
-					EntryId: oddsData.EntryId,
-					Type:    oddsData.Type,
-					Data:    convertedOdds,
-				} // Conversion logic here
-				oddsChannel <- convertedOddsData
-
-			}
-		}
-
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatalf("Error reading from stream: %v", err)
+		rabbitMQ.Publish([]byte(jsonStr))
 	}
 }

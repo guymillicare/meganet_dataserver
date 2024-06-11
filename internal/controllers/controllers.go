@@ -8,6 +8,8 @@ import (
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
+	"sportsbook-backend/internal/types/requests"
+	"sportsbook-backend/internal/utils"
 	"strconv"
 	"sync"
 	"time"
@@ -185,7 +187,7 @@ func GetSportEventsWithOdds(w http.ResponseWriter, r *http.Request) {
 	offset := page * limit
 
 	// sportEvents, err := repositories.SportEventsFindByFilters(int32(currentUser.SystemId), 1, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
-	sportEvents, _ := repositories.SportEventsFindByFilters(55, 1, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
+	sportEvents, _ := repositories.SportEventsFindByFilters(56, 1, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
 	var results []*types.SportEventOddsItem
 	for _, event := range sportEvents {
 		outcomes, _ := getOutcomes(strconv.Itoa(int(event.Id)))
@@ -197,5 +199,26 @@ func GetSportEventsWithOdds(w http.ResponseWriter, r *http.Request) {
 
 	render.Render(w, r, &types.SportEventListResponse{
 		SportEventList: results,
+	})
+}
+
+func GetSportEventsWithLiveOdds(w http.ResponseWriter, r *http.Request) {
+
+	var req requests.EventsList
+	if err := utils.JsonParseRequestBody(w, r, false, &req); err != nil {
+		return
+	}
+
+	var results []*types.SportEventsOddsItem
+	for _, eventRefId := range req.EventIdList {
+		event, _ := repositories.GetSportEventFromRedis(eventRefId)
+		outcomes, _ := getOutcomes(strconv.Itoa(int(event.Id)))
+		var entity types.SportEventsOddsItem
+		entity.SportEvent = event
+		entity.Outcome = outcomes
+		results = append(results, &entity)
+	}
+	render.Render(w, r, &types.SportEventsListResponse{
+		SportEventsList: results,
 	})
 }
