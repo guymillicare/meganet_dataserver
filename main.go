@@ -42,7 +42,7 @@ func main() {
 
 	// Start the scheduler to fetch games data periodically
 	prematchData := &grpc.PrematchData{}                                        // assuming grpc.GamesData is a thread-safe struct
-	scheduler.StartPrematchCronJob(gamesClient, prematchData, "0 */3 * * *")    // Runs every 3 hours
+	scheduler.StartPrematchCronJob(gamesClient, prematchData, "57 4 * * *")     // Runs every 3 hours
 	scheduler.StartMatchStatusCronJob(gamesClient, prematchData, "*/2 * * * *") // Runs every 2 mins
 
 	oddsChannel := make(chan *pb.LiveOddsData)
@@ -50,18 +50,26 @@ func main() {
 
 	tournamnets, _ := repositories.TournamentsFindAll()
 	for _, tournament := range tournamnets {
-		url := fmt.Sprintf("%s/api/v2/stream/odds?sportsbooks=betsson&sportsbooks=bet365&sportsbooks=1XBet&sportsbooks=Pinnacle&league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
+		urlLiveOdds := fmt.Sprintf("%s/api/v2/stream/odds?sportsbooks=bodog&sportsbooks=fanduel&sportsbooks=bet365&sportsbooks=1XBet&sportsbooks=Pinnacle&league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
+		urlLiveGameScore := fmt.Sprintf("%s/api/v2/stream/results?league=%s&key=%s", cfg.ThirdPartyAPIBaseURL, tournament.Name, cfg.APIKey)
 		wg.Add(1)
-		go grpc.ListenToStream(url, oddsChannel, wg, rabbitMQ)
+		go func(url string) {
+			defer wg.Done()
+			grpc.ListenToStream(url, oddsChannel, wg, rabbitMQ)
+		}(urlLiveOdds)
+
+		wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
+			grpc.ListenToStream(url, oddsChannel, wg, rabbitMQ)
+		}(urlLiveGameScore)
 	}
 
 	// Start the RabbitMQ consumer in a separate goroutine
-	go func() {
-		consumeRabbitMQ(rabbitMQ, oddsChannel)
-	}()
+	go consumeRabbitMQ(rabbitMQ, oddsChannel)
 
 	// Start the gRPC server
-	grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel)
+	go grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel)
 	// Start the HTTP server
 	handler := SetupHttpHandler(cfg.APICorsAllowedOrigins)
 	port := 9000
@@ -159,8 +167,8 @@ func consumeRabbitMQ(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveOddsDa
 				}
 				// Send live data to gRPC clients
 				oddsChannel <- convertedOddsData
+				// fmt.Printf("Consumer: %v\n", convertedOddsData)
 			}
 		}
-		fmt.Printf("Processed a message: %v\n", oddsData)
 	}
 }

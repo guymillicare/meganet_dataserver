@@ -49,7 +49,7 @@ type CompetitorItem struct {
 	Name        string    `json:"name"`
 	Abbr        string    `json:"abbr"`
 	Logo        string    `json:"logo"`
-	SportId     string    `json:"sport_id`
+	SportId     string    `json:"sport_id"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	DeletedAt   time.Time `json:"-"`
@@ -140,6 +140,24 @@ type OddsStream struct {
 	Type    string `json:"type"`
 }
 
+type GameScoreStream struct {
+	Data struct {
+		GameID string `json:"game_id"`
+		Score  struct {
+			Clock                    string `json:"clock"`
+			ScoreAwayPeriod1         int    `json:"score_away_period_1"`
+			ScoreAwayPeriod1Tiebreak *int   `json:"score_away_period_1_tiebreak,omitempty"`
+			ScoreAwayPeriod2         int    `json:"score_away_period_2"`
+			ScoreAwayTotal           int    `json:"score_away_total"`
+			ScoreHomePeriod1         int    `json:"score_home_period_1"`
+			ScoreHomePeriod1Tiebreak *int   `json:"score_home_period_1_tiebreak,omitempty"`
+			ScoreHomePeriod2         int    `json:"score_home_period_2"`
+			ScoreHomeTotal           int    `json:"score_home_total"`
+		} `json:"score"`
+	} `json:"data"`
+	EntryId string `json:"entry_id"`
+}
+
 type GenericResponse struct{}
 
 func (rd *GenericResponse) Render(w http.ResponseWriter, r *http.Request) error {
@@ -148,7 +166,8 @@ func (rd *GenericResponse) Render(w http.ResponseWriter, r *http.Request) error 
 
 type OutcomeListResponse struct {
 	GenericResponse
-	OutcomeList []*OutcomeItem `json:"outcomeList"`
+	SportEvent *SportEventItem `json:"sportEvent"`
+	Outcome    []*OutcomeItem  `json:"outcome"`
 }
 
 type SportEventListResponse struct {

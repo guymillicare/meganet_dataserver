@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	SportsbookService_ListPrematch_FullMethodName = "/proto.SportsbookService/ListPrematch"
-	SportsbookService_SendLiveOdds_FullMethodName = "/proto.SportsbookService/SendLiveOdds"
+	SportsbookService_ListPrematch_FullMethodName  = "/proto.SportsbookService/ListPrematch"
+	SportsbookService_SendLiveOdds_FullMethodName  = "/proto.SportsbookService/SendLiveOdds"
+	SportsbookService_SendLiveScore_FullMethodName = "/proto.SportsbookService/SendLiveScore"
 )
 
 // SportsbookServiceClient is the client API for SportsbookService service.
@@ -30,6 +31,7 @@ type SportsbookServiceClient interface {
 	// Sends a request to list all permatches available
 	ListPrematch(ctx context.Context, in *ListPrematchRequest, opts ...grpc.CallOption) (*ListPrematchResponse, error)
 	SendLiveOdds(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveOddsClient, error)
+	SendLiveScore(ctx context.Context, in *LiveScoreRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveScoreClient, error)
 }
 
 type sportsbookServiceClient struct {
@@ -81,6 +83,38 @@ func (x *sportsbookServiceSendLiveOddsClient) Recv() (*LiveOddsData, error) {
 	return m, nil
 }
 
+func (c *sportsbookServiceClient) SendLiveScore(ctx context.Context, in *LiveScoreRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveScoreClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SportsbookService_ServiceDesc.Streams[1], SportsbookService_SendLiveScore_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &sportsbookServiceSendLiveScoreClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type SportsbookService_SendLiveScoreClient interface {
+	Recv() (*LiveScoreData, error)
+	grpc.ClientStream
+}
+
+type sportsbookServiceSendLiveScoreClient struct {
+	grpc.ClientStream
+}
+
+func (x *sportsbookServiceSendLiveScoreClient) Recv() (*LiveScoreData, error) {
+	m := new(LiveScoreData)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // SportsbookServiceServer is the server API for SportsbookService service.
 // All implementations must embed UnimplementedSportsbookServiceServer
 // for forward compatibility
@@ -88,6 +122,7 @@ type SportsbookServiceServer interface {
 	// Sends a request to list all permatches available
 	ListPrematch(context.Context, *ListPrematchRequest) (*ListPrematchResponse, error)
 	SendLiveOdds(*LiveOddsRequest, SportsbookService_SendLiveOddsServer) error
+	SendLiveScore(*LiveScoreRequest, SportsbookService_SendLiveScoreServer) error
 	mustEmbedUnimplementedSportsbookServiceServer()
 }
 
@@ -100,6 +135,9 @@ func (UnimplementedSportsbookServiceServer) ListPrematch(context.Context, *ListP
 }
 func (UnimplementedSportsbookServiceServer) SendLiveOdds(*LiveOddsRequest, SportsbookService_SendLiveOddsServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendLiveOdds not implemented")
+}
+func (UnimplementedSportsbookServiceServer) SendLiveScore(*LiveScoreRequest, SportsbookService_SendLiveScoreServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendLiveScore not implemented")
 }
 func (UnimplementedSportsbookServiceServer) mustEmbedUnimplementedSportsbookServiceServer() {}
 
@@ -153,6 +191,27 @@ func (x *sportsbookServiceSendLiveOddsServer) Send(m *LiveOddsData) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _SportsbookService_SendLiveScore_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(LiveScoreRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SportsbookServiceServer).SendLiveScore(m, &sportsbookServiceSendLiveScoreServer{stream})
+}
+
+type SportsbookService_SendLiveScoreServer interface {
+	Send(*LiveScoreData) error
+	grpc.ServerStream
+}
+
+type sportsbookServiceSendLiveScoreServer struct {
+	grpc.ServerStream
+}
+
+func (x *sportsbookServiceSendLiveScoreServer) Send(m *LiveScoreData) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // SportsbookService_ServiceDesc is the grpc.ServiceDesc for SportsbookService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -169,6 +228,11 @@ var SportsbookService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SendLiveOdds",
 			Handler:       _SportsbookService_SendLiveOdds_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SendLiveScore",
+			Handler:       _SportsbookService_SendLiveScore_Handler,
 			ServerStreams: true,
 		},
 	},

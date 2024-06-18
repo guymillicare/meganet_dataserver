@@ -38,8 +38,6 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 			continue
 		}
 
-		// marketOutcome, _ := MarketOutcomeFindByMarketAndOutcome(odds.MarketName, oddsName)
-		// if marketOutcome == nil {
 		newOutcomeConstant := &types.OutcomeConstantItem{
 			ReferenceId: odds.MarketName + ":" + oddsName,
 			Name:        oddsName,
@@ -54,7 +52,6 @@ func CreateOutcome(prematch *proto.Prematch, sportEvent *types.SportEventItem) (
 			SportRefId:        sportRefId,
 		}
 		newMarketOutcomes = append(newMarketOutcomes, newMarketOutcome)
-		// }
 
 		// createOrUpdateMarketOutcome(newMarketOutcome, sportRefId, marketConstant, oddsName, odds.MarketName)
 		// createOrUpdateSportMarketGroup(sportId, prematch.Sport, marketConstant, odds)
@@ -136,35 +133,13 @@ func createOrUpdateOutcome(odds *proto.Odds, sportEvent *types.SportEventItem, m
 }
 
 func SaveOutcomeToRedis(outcome *types.OutcomeItem) error {
-	// outcomeJSON, err := json.Marshal(outcome)
-	// if err != nil {
-	// 	fmt.Println("Error marshaling OutcomeItem:", err)
-	// 	return err
-	// }
-
 	ctx := context.Background()
-	// key := fmt.Sprintf("event:%d-outcome:%s", outcome.EventId, outcome.ReferenceId)
-
-	// // Define the expiration time as 90 days
-	// expiration := 90 * 24 * time.Hour
-
-	// // Save the outcome to Redis
-	// err = database.RedisDB.Set(ctx, key, outcomeJSON, expiration).Err()
-	// if err != nil {
-	// 	fmt.Println("Error saving OutcomeItem to Redis:", err)
-	// 	return err
-	// }
 
 	// Update the cache with the new outcome
 	cacheKey := fmt.Sprintf("event:%d-outcomes", outcome.EventId)
 	err := appendOutcomeToCache(ctx, cacheKey, outcome)
 	if err != nil {
 		fmt.Println("Error updating outcome cache:", err)
-		// // Rollback the outcome from Redis
-		// rollbackErr := database.RedisDB.Del(ctx, key).Err()
-		// if rollbackErr != nil {
-		// 	fmt.Println("Error rolling back OutcomeItem from Redis:", rollbackErr)
-		// }
 		return err
 	}
 

@@ -12,7 +12,7 @@ func SetupRouter(router *chi.Mux) {
 	router.Use(middleware.Recoverer)
 
 	router.Route("/datafeed", func(r chi.Router) {
-		r.Get("/outcomes/{eventId}", controllers.GetOutcomesByEventId)
+		r.Get("/outcomes/{eventRefId}", controllers.GetOutcomesByEventId)
 		r.Get("/events/{betType}/{sportId}", controllers.GetSportEventsWithOdds)
 		r.Get("/events/{betType}/{sportId}/{countryId}", controllers.GetSportEventsWithOdds)
 		r.Get("/events/{betType}/{sportId}/{countryId}/{leagueId}", controllers.GetSportEventsWithOdds)

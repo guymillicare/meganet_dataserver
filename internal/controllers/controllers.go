@@ -20,7 +20,9 @@ import (
 )
 
 func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
-	eventId := chi.URLParam(r, "eventId")
+	eventRefId := chi.URLParam(r, "eventRefId")
+	event, _ := repositories.GetSportEventFromRedis(eventRefId)
+	eventId := strconv.Itoa(int(event.Id))
 	outcomes, err := getOutcomes(eventId)
 	if err != nil {
 		render.Status(r, http.StatusInternalServerError)
@@ -29,30 +31,31 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 	}
 
 	render.Render(w, r, &types.OutcomeListResponse{
-		OutcomeList: outcomes,
+		SportEvent: event,
+		Outcome:    outcomes,
 	})
 }
 
 func getOutcomes(eventId string) ([]*types.OutcomeItem, error) {
-	var err error
+	// var err error
 
 	ctx := context.Background()
 
 	// Attempt to fetch outcomes from cache
 	outcomes, _ := getCachedOutcomes(ctx, eventId)
 
-	if outcomes == nil {
-		// If outcomes are not found in cache, fetch from Redis
-		outcomes, err = fetchOutcomesFromRedis(ctx, eventId)
-		if err != nil {
-			return nil, err
-		}
+	// if outcomes == nil {
+	// 	// If outcomes are not found in cache, fetch from Redis
+	// 	outcomes, err = fetchOutcomesFromRedis(ctx, eventId)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 
-		// Cache fetched outcomes
-		if err = cacheOutcomes(ctx, eventId, outcomes); err != nil {
-			return nil, err
-		}
-	}
+	// 	// Cache fetched outcomes
+	// 	if err = cacheOutcomes(ctx, eventId, outcomes); err != nil {
+	// 		return nil, err
+	// 	}
+	// }
 	return outcomes, nil
 }
 

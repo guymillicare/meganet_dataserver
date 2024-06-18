@@ -10,6 +10,7 @@ service SportsbookService {
     // Sends a request to list all permatches available
     rpc ListPrematch (ListPrematchRequest) returns (ListPrematchResponse);
     rpc SendLiveOdds (LiveOddsRequest) returns (stream LiveOddsData);
+    rpc SendLiveScore (LiveScoreRequest) returns (stream LiveScoreData);
 }
 
 // The request message containing the information needed to list games.
@@ -75,13 +76,17 @@ message LiveOddsRequest {
     // Add any request fields if necessary
 }
 
+message LiveScoreRequest {
+    // Add any request fields if necessary
+}
+
 message LiveOddsData {
-    Data data= 1;
+    OddsData data= 1;
     string entry_id = 2;
     string type = 3;
 }
 
-message Data {
+message OddsData {
     string bet_name = 1;
     double bet_points = 2;
     double bet_price = 3;
@@ -98,4 +103,26 @@ message Data {
     string sport = 14;
     string sportsbook = 15;
     double timestamp = 16;
+}
+
+message LiveScoreData {    
+    ScoreData data = 1;
+    string entry_id = 2;
+}
+
+message ScoreData {
+    string game_id = 1;
+    Score score = 2;
+}
+
+message Score {
+    string clock = 1;
+    double score_away_period_1 = 2;
+    double score_away_period_1_tiebreak = 3;
+    double score_away_period_2 = 4;
+    double score_away_total = 5;
+    double score_home_period_1 = 6;
+    double score_home_period_1_tiebreak = 7;
+    double score_home_period_2 = 8;
+    double score_home_total = 9;
 }

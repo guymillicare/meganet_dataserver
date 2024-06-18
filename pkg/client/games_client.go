@@ -66,13 +66,14 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 			}
 
 			oddsURL := fmt.Sprintf(
-				"%s/api/v2/game-odds?key=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s",
+				"%s/api/v2/game-odds?key=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s",
 				gc.BaseURL,
 				gc.APIKey,
 				"bet365",
-				"betsson",
+				"bodog",
 				"Pinnacle",
 				"1XBet",
+				"fanduel",
 			)
 			for _, gameID := range gameIDs {
 				oddsURL += fmt.Sprintf("&game_id=%s", gameID)

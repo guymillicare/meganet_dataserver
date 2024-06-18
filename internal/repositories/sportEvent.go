@@ -186,11 +186,6 @@ func SportEventsFindByFilters(systemId int32, providerId int, status string, spo
 		query = query.Joins("JOIN (SELECT DISTINCT sport_id FROM system_sports WHERE system_sports.system_id = ? AND system_sports.type = ?) AS filtered_system_sports ON filtered_system_sports.sport_id = sports.id", systemId, sport_type)
 	}
 	query = query.Where("sport_events.provider_id=? AND sport_events.status = ?", providerId, status)
-	if systemId > 0 {
-		query = query.Joins("LEFT JOIN system_sports ON system_sports.sport_id = sports.id").
-			Where("sport_events.provider_id=? AND sport_events.status = ?", providerId, status).
-			Where("system_sports.system_id=?", systemId)
-	}
 	if sportId > 0 {
 		query = query.Where("sport_events.sport_id=?", sportId)
 	}
