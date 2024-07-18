@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sportsbook-backend/internal/config"
@@ -17,6 +19,9 @@ import (
 	"sportsbook-backend/pkg/queue"
 	"strings"
 
+	gRPC "google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/render"
@@ -28,6 +33,14 @@ func main() {
 	database.InitPostgresDB(cfg)
 	database.InitRedis(cfg)
 	Preload()
+
+	conn, err := gRPC.Dial("your_grpc_server_address:port", gRPC.WithInsecure())
+	if err != nil {
+		log.Fatalf("Did not connect: %v", err)
+	}
+	defer conn.Close()
+	gRPCClient := pb.NewFeedServiceClient(conn)
+	subscribeToFeed(gRPCClient)
 
 	// Initialize RabbitMQ
 	rabbitMQ_odds, err := queue.NewRabbitMQ("live_odds_queue")
@@ -282,5 +295,26 @@ func consumeRabbitMQScore(rabbitMQ *queue.RabbitMQ, scoreChannel chan<- *pb.Live
 		scoreChannel <- convertedScoreData
 		// 	}
 		// }
+	}
+}
+
+func subscribeToFeed(gRPCClient pb.FeedServiceClient) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stream, err := gRPCClient.SubscribeToFeed(ctx, &emptypb.Empty{})
+	if err != nil {
+		log.Fatalf("Error on subscribe: %v", err)
+	}
+
+	for {
+		feedUpdate, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatalf("Error receiving feed update: %v", err)
+		}
+		log.Printf("Feed update: %v", feedUpdate)
 	}
 }

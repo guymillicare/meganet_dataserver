@@ -1,0 +1,429 @@
+syntax = "proto3";
+import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "internal/proto";
+
+option csharp_namespace = "DataFeed.Grpc";
+package datafeed;
+
+service FeedService
+{
+  rpc GetSports(google.protobuf.Empty) returns (SportResponse);
+  rpc GetCountries(google.protobuf.Empty) returns (CountryResponse);
+  rpc GetTournaments(TournamentRequest) returns (TournamentResponse);
+  rpc GetMarketDefinitions(google.protobuf.Empty) returns (MarketDefinitionsResponse);
+  rpc GetMatches(MatchesRequest) returns (MatchesResponse);
+  rpc GetMatchSnapshots(MatchSnapshotsRequest) returns (MatchSnapshotsResponse);
+  rpc SubscribeToFeed(google.protobuf.Empty) returns (stream FeedUpdateData);
+  rpc SyncData(google.protobuf.Empty) returns (SyncDataResponse);
+  rpc BetControl(BetControlRequest) returns (BetControlResponse);
+
+}
+
+message Sport{
+  int32 id = 1;
+  string name = 2;
+  int32 sort = 3;
+  int32 hash = 4;
+  int64 last_update = 5;
+  map<string, string> translations = 6;
+}
+
+message Country{
+  int32 id = 1;
+  string name = 2;
+  optional string iso2 = 3;
+  int32 sort = 4;
+  int32 hash = 5;
+  int64 last_update = 6;
+  map<string, string> translations = 7;
+}
+
+message SportResponse{
+  bool success = 1;
+  optional string message = 2;
+  repeated Sport data = 3;
+}
+enum EventStatus{
+  not_active = 0;
+  not_started = 1;
+  live = 2;
+}
+message CountryResponse{
+  bool success = 1;
+  optional string message = 2;
+  repeated Country data = 3;
+}
+message SportCountry{
+  int32 id = 1;
+  int32 sport_id = 2;
+  int32 country_id = 3;
+}
+message Tournament{
+  int32 id = 1;
+  string name = 2;
+  SportCountry sport_country = 3;
+  bool is_women = 4;
+  bool is_young = 5;
+  bool is_cyber = 6;
+  bool is_doubles = 7;
+  int32 sort = 8;
+  int32 hash = 9;
+  int64 last_update = 10;
+  map<string, string> translations = 11;
+}
+message Team{
+  int32 id = 1;
+  string name = 2;
+  bool has_logo = 3;
+  int32 hash = 4;
+  int64 last_update = 5;
+  map<string, string> translations = 6;
+}
+message TournamentRequest{
+  optional int32 sport_id = 1;
+  optional int32 country_id = 2;
+}
+message TournamentResponse{
+
+  bool success = 1;
+  optional string message = 2;
+  repeated Tournament data = 3;
+}
+message MarketDefinitionsResponse{
+  message MarketGroup{
+
+    message MarketTemplate{
+      message OutcomeTemplate{
+        int32 id = 1;
+        string name = 2;
+        int32 sort = 3;
+        int32 hash = 4;
+        map<string, string> translations = 5;
+        int64 last_update = 6;
+      }
+
+      int32 id = 1;
+      string name = 2;
+      int32 sort = 3;
+      int32 hash = 4;
+      map<string, string> translations = 5;
+      int64 last_update = 6;
+      repeated OutcomeTemplate outcomes = 7;
+    }
+
+    int32 id = 1;
+    string name = 2;
+    int32 sort = 3;
+    int32 hash = 4;
+    map<string, string> translations = 5;
+    int64 last_update = 6;
+    repeated MarketTemplate market_templates = 7;
+
+  }
+
+  bool success = 1;
+  optional string message = 2;
+  repeated MarketGroup data = 3;
+}
+message MatchesRequest{
+  repeated EventStatus status = 1;
+  repeated int32 sport_id = 2;
+  repeated int32 country_id = 3;
+  repeated int32 tournament_id = 4;
+  optional int64 start_date = 5;
+  optional int64 end_date = 6;
+}
+message MatchesResponse{
+  message Sport{
+    message Country{
+      int32 id = 1;
+      string name = 2;
+      optional string iso2 = 3;
+      int32 sort = 4;
+      int32 hash = 5;
+      int64 last_update = 6;
+      map<string, string> translations = 7;
+    }
+
+    message SportCountry{
+
+      message Tournament{
+        message Match
+        {
+          int32 id = 1;
+          int64 match_date = 2;
+          int32 sport_id = 3;
+          int32 sport_country_id = 4;
+          int32 country_id = 5;
+          int32 tournament_id = 6;
+          Team home_team = 7;
+          Team away_team = 8;
+          EventStatus status = 9;
+          int32 betradar_id = 10;
+          bool has_stream = 11;
+          bool has_scout = 12;
+          bool will_be_live = 13;
+          optional bytes matchInfo = 14;
+          int32  priority = 17;
+          int32 hash = 18;
+          int64 last_update = 19;
+        }
+
+
+        int32 id = 1;
+        string name = 2;
+        bool is_women = 3;
+        bool is_young = 4;
+        bool is_cyber = 5;
+        bool is_doubles = 6;
+        int32 sort = 7;
+        int32 hash = 8;
+        int64 last_update = 9;
+        map<string, string> translations = 10;
+        repeated Match matches = 11;
+      }
+
+
+
+      int32 id = 1;
+      Country country = 3;
+      repeated Tournament tournaments = 4;
+
+    }
+
+    int32 id = 1;
+    string name = 2;
+    int32 sort = 3;
+    int32 hash = 4;
+    int64 last_update = 5;
+    map<string, string> translations = 6;
+    repeated SportCountry sport_countries = 7;
+  }
+
+  bool success = 1;
+  optional string message = 2;
+  repeated Sport data = 3;
+}
+message MatchSnapshotsRequest{
+  repeated int32 match_ids = 1;
+  repeated string lang = 2;
+}
+message MarketParam{
+  optional int32 param = 1;
+  optional int32 high = 2;
+  optional int32 low = 3;
+}
+message MatchSnapshotsResponse{
+  message MatchSnapshot
+  {
+    message Game{
+
+      message Market{
+
+        message Odd{
+          int64 id = 1;
+          int32 outcome_id = 2;
+          optional MarketParam param = 3;
+          bool active = 4;
+          int32 value = 5;
+          int32 probability = 6;
+          bool blocked = 7;
+          int32 sort = 8;
+          int32 hash = 9;
+        }
+
+        int64 id = 1;
+        int32 group_id = 2;
+        int32 group_sort = 3;
+        int32 template_id = 4;
+        int32 template_sort = 5;
+        bool is_main = 6;
+        bool live = 7;
+        optional MarketParam param = 8;
+        bool active = 9;
+        bool most_balanced = 10;
+        int32 margin = 11;
+        int32 hash = 12;
+        int64 last_update = 13;
+        repeated Odd odds = 14;
+      }
+
+      int32 id = 1;
+      bool is_main = 2;
+      int32 game_type = 3;
+      optional bytes game_info = 4;
+      EventStatus status = 5;
+      bool blocked = 6;
+      int32 hash = 7;
+      int64 last_update = 8;
+      repeated Market markets = 9;
+    }
+
+
+    int32 id = 1;
+    int64 match_date = 2;
+    Sport sport = 3;
+    Country country = 4;
+    Tournament tournament = 5;
+    Team home_team = 6;
+    Team away_team = 7;
+    EventStatus status = 8;
+    int32 betradar_id = 9;
+    bool has_stream = 10;
+    bool has_scout = 11;
+    bool will_be_live = 12;
+    int32 priority = 13;
+    optional bytes matchInfo = 14;
+    int32 hash = 15;
+    int64 last_update = 16;
+    repeated Game games = 17;
+  }
+
+  bool success = 1;
+  optional string message = 2;
+  repeated MatchSnapshot data = 3;
+}
+message SyncDataResponse{
+
+  message match{
+
+    message game{
+      int32 id = 1;
+      EventStatus status = 2;
+      bool blocked = 3;
+      int32 hash = 4;
+    }
+    int32 id = 1;
+    EventStatus status = 2;
+    int32 hash = 3;
+    repeated game games = 4;
+  }
+
+  bool success = 1;
+  optional string message = 2;
+  repeated match data = 3;
+
+}
+message FeedUpdateData {
+
+  oneof data{
+    MatchUpdate match = 1;
+    GameUpdate game = 2;
+    MatchResult match_result = 3;
+    Settlement settlement = 4;
+  }
+
+  message GameUpdate {
+
+
+    message Markets {
+
+      message Odds {
+        int64 id = 1;
+        int32 outcome_id = 2;
+        optional MarketParam param = 3;
+        bool active = 4;
+        int32 value = 5;
+        int32 probability = 6;
+        bool blocked = 7;
+        int32 sort = 8;
+        int32 hash = 9;
+      }
+
+      int64 id = 1;
+      bool is_main = 2;
+      int32 group_id = 3;
+      int32 market_template = 4;
+      optional MarketParam param = 5;
+      bool active = 6;
+      bool live = 7;
+      int32 margin = 8;
+      int32 hash = 9;
+      int32 market_sort = 10;
+      int32 group_sort = 11;
+      bool most_balanced = 12;
+      int64 last_update = 13;
+      repeated Odds odds = 14;
+    }
+
+    int32 id = 1;
+    int32 match_id = 2;
+    EventStatus status = 3;
+    optional bytes game_info = 4;
+    int32 game_type = 5;
+    bool blocked = 6;
+    bool is_main = 7;
+    int32 market_count = 8;
+    int32 hash = 9;
+    int64 last_update = 10;
+    repeated Markets markets = 11;
+  }
+  message MatchUpdate {
+    int32 id = 1;
+    int64 match_date = 2;
+    int32 sport_id = 3;
+    int32 country_id = 4;
+    int32 sport_country_id = 5;
+    int32 tournament_id = 6;
+    int32 home_id = 7;
+    int32 away_id = 8;
+    EventStatus status = 9;
+    bool will_be_live = 10;
+    optional int32  betradar_id = 11;
+    bool has_stream = 12;
+    bool has_scout = 13;
+    int32 priority = 14;
+    optional bytes match_info = 15;
+    int32 hash = 16;
+    int64 last_update = 17;
+    int32 games_count = 18;
+  }
+  message MatchResult{
+    int32 match_id = 1;
+    int32 game_type = 2;
+    int32 status = 3;
+    string result = 4;
+  }
+  message Settlement
+  {
+    int64 odd_id = 1;
+    SettlementStatus status = 2;
+    optional SettlementStatus old_status = 3;
+  }
+
+
+}
+message BetControlRequest{
+  repeated int64 oddsIds = 1;
+}
+message BetControlResponse{
+  message BetControlStatus {
+    int64 odds_id = 1;
+    int32 game_id = 2;
+    int32 match_id = 3;
+    int64 market_id = 4;
+    bool odd_active = 5;
+    int32 odds_value = 6;
+    EventStatus game_status = 7;
+    bool game_blocked = 8;
+    EventStatus match_status = 9;
+    bool odds_blocked = 10;
+    bool market_active = 11;
+    bool is_safe = 12;
+    int32 margin = 13;
+    int32 probability = 14;
+  }
+  bool success = 1;
+  string message = 2;
+  repeated BetControlStatus data = 3;
+}
+enum SettlementStatus{
+  unsettled = 0;
+  won = 1;
+  half_won = 2;
+  refunded = 3;
+  half_refunded = 4;
+  lost = 5;
+}
