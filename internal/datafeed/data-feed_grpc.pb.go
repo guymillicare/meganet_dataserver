@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v5.26.1
-// source: internal/proto/data-feed.proto
+// source: internal/datafeed/data-feed.proto
 
-package proto
+package datafeed
 
 import (
 	context "context"
@@ -430,5 +430,5 @@ var FeedService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "internal/proto/data-feed.proto",
+	Metadata: "internal/datafeed/data-feed.proto",
 }

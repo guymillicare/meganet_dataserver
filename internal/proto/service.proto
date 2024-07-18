@@ -9,7 +9,7 @@ option go_package = "internal/proto";
 service SportsbookService {
     // Sends a request to list all permatches available
     rpc ListPrematch (ListPrematchRequest) returns (ListPrematchResponse);
-    rpc SendLiveOdds (LiveOddsRequest) returns (stream LiveOddsData);
+    rpc SendLiveData (LiveOddsRequest) returns (stream LiveData);
     rpc SendLiveScore (LiveScoreRequest) returns (stream LiveScoreData);
 }
 
@@ -80,29 +80,77 @@ message LiveScoreRequest {
     // Add any request fields if necessary
 }
 
-message LiveOddsData {
-    OddsData data= 1;
-    string entry_id = 2;
-    string type = 3;
+enum EventStatus{
+  not_active = 0;
+  not_started = 1;
+  live = 2;
 }
 
-message OddsData {
-    string bet_name = 1;
-    double bet_points = 2;
-    double bet_price = 3;
-    string bet_type = 4;
-    string game_id = 5;
-    string id = 6;
-    bool is_live = 7;
-    bool is_main = 8;
-    string league = 9;
-    string player_id = 10;
-    string selection = 11;
-    string selection_line = 12;
-    double selection_points = 13;
-    string sport = 14;
-    string sportsbook = 15;
-    double timestamp = 16;
+enum SettlementStatus{
+  unsettled = 0;
+  won = 1;
+  half_won = 2;
+  refunded = 3;
+  half_refunded = 4;
+  lost = 5;
+}
+
+message LiveData {
+    oneof data{
+        MatchUpdate match = 1;
+        LiveOddsData odds = 2;
+        MatchResult match_result = 3;
+        Settlement settlement = 4;
+    }
+
+    message LiveOddsData {
+        message OddsData {
+            string bet_name = 1;
+            double bet_points = 2;
+            double bet_price = 3;
+            string bet_type = 4;
+            string game_id = 5;
+            string id = 6;
+            string active = 7;
+        }
+        string match_id = 1;
+        EventStatus status = 2;
+        optional bytes game_info = 3;
+        repeated OddsData odds = 4;
+    }
+
+    message MatchUpdate {
+        int32 id = 1;
+        int64 match_date = 2;
+        int32 sport_id = 3;
+        int32 country_id = 4;
+        int32 sport_country_id = 5;
+        int32 tournament_id = 6;
+        int32 home_id = 7;
+        int32 away_id = 8;
+        EventStatus status = 9;
+        bool will_be_live = 10;
+        optional int32  betradar_id = 11;
+        bool has_stream = 12;
+        bool has_scout = 13;
+        int32 priority = 14;
+        optional bytes match_info = 15;
+        int32 hash = 16;
+        int64 last_update = 17;
+        int32 games_count = 18;
+    }
+    message MatchResult{
+        int32 match_id = 1;
+        int32 game_type = 2;
+        int32 status = 3;
+        string result = 4;
+    }
+    message Settlement
+    {
+        int64 odd_id = 1;
+        SettlementStatus status = 2;
+        optional SettlementStatus old_status = 3;
+    }
 }
 
 message LiveScoreData {    

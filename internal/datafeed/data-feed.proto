@@ -2,7 +2,7 @@ syntax = "proto3";
 import "google/protobuf/struct.proto";
 import "google/protobuf/empty.proto";
 
-option go_package = "internal/proto";
+option go_package = "internal/datafeed";
 
 option csharp_namespace = "DataFeed.Grpc";
 package datafeed;

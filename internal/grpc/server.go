@@ -19,7 +19,7 @@ import (
 )
 
 type clientOddsStream struct {
-	stream   pb.SportsbookService_SendLiveOddsServer
+	stream   pb.SportsbookService_SendLiveDataServer
 	stopChan chan struct{}
 }
 
@@ -33,7 +33,7 @@ type server struct {
 	lock         sync.Mutex
 	oddsClients  map[string]*clientOddsStream
 	scoreClients map[string]*clientScoreStream
-	oddsChannel  chan *pb.LiveOddsData
+	oddsChannel  chan *pb.LiveData
 	scoreChannel chan *pb.LiveScoreData
 }
 
@@ -58,7 +58,7 @@ func (s *server) broadcastOddsData() {
 	}
 }
 
-func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveOddsServer) error {
+func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveDataServer) error {
 	clientID := fmt.Sprintf("%p", stream) // Unique client ID
 	stopChan := make(chan struct{})
 
@@ -124,7 +124,7 @@ func (s *server) SendLiveScore(req *pb.LiveScoreRequest, stream pb.SportsbookSer
 
 	return nil
 }
-func StartGRPCServer(port string, oddsChannel chan *pb.LiveOddsData, scoreChannel chan *pb.LiveScoreData) {
+func StartGRPCServer(port string, oddsChannel chan *pb.LiveData, scoreChannel chan *pb.LiveScoreData) {
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
@@ -150,7 +150,7 @@ func StartGRPCServer(port string, oddsChannel chan *pb.LiveOddsData, scoreChanne
 	log.Printf("gRPC server started")
 }
 
-func ListenToOddsStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.WaitGroup, rabbitMQ *queue.RabbitMQ) {
+func ListenToOddsStream(url string, oddsChannel chan *pb.LiveData, wg *sync.WaitGroup, rabbitMQ *queue.RabbitMQ) {
 	defer wg.Done()
 
 	for {
@@ -162,7 +162,7 @@ func ListenToOddsStream(url string, oddsChannel chan *pb.LiveOddsData, wg *sync.
 	}
 }
 
-func connectAndListen(url string, oddsChannel chan *pb.LiveOddsData, rabbitMQ *queue.RabbitMQ) error {
+func connectAndListen(url string, oddsChannel chan *pb.LiveData, rabbitMQ *queue.RabbitMQ) error {
 	client := &http.Client{
 		Timeout: 30 * time.Second, // Set a timeout for the HTTP client
 	}

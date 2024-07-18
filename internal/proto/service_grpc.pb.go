@@ -20,7 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	SportsbookService_ListPrematch_FullMethodName  = "/proto.SportsbookService/ListPrematch"
-	SportsbookService_SendLiveOdds_FullMethodName  = "/proto.SportsbookService/SendLiveOdds"
+	SportsbookService_SendLiveData_FullMethodName  = "/proto.SportsbookService/SendLiveData"
 	SportsbookService_SendLiveScore_FullMethodName = "/proto.SportsbookService/SendLiveScore"
 )
 
@@ -30,7 +30,7 @@ const (
 type SportsbookServiceClient interface {
 	// Sends a request to list all permatches available
 	ListPrematch(ctx context.Context, in *ListPrematchRequest, opts ...grpc.CallOption) (*ListPrematchResponse, error)
-	SendLiveOdds(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveOddsClient, error)
+	SendLiveData(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveDataClient, error)
 	SendLiveScore(ctx context.Context, in *LiveScoreRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveScoreClient, error)
 }
 
@@ -51,12 +51,12 @@ func (c *sportsbookServiceClient) ListPrematch(ctx context.Context, in *ListPrem
 	return out, nil
 }
 
-func (c *sportsbookServiceClient) SendLiveOdds(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveOddsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &SportsbookService_ServiceDesc.Streams[0], SportsbookService_SendLiveOdds_FullMethodName, opts...)
+func (c *sportsbookServiceClient) SendLiveData(ctx context.Context, in *LiveOddsRequest, opts ...grpc.CallOption) (SportsbookService_SendLiveDataClient, error) {
+	stream, err := c.cc.NewStream(ctx, &SportsbookService_ServiceDesc.Streams[0], SportsbookService_SendLiveData_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &sportsbookServiceSendLiveOddsClient{stream}
+	x := &sportsbookServiceSendLiveDataClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -66,17 +66,17 @@ func (c *sportsbookServiceClient) SendLiveOdds(ctx context.Context, in *LiveOdds
 	return x, nil
 }
 
-type SportsbookService_SendLiveOddsClient interface {
-	Recv() (*LiveOddsData, error)
+type SportsbookService_SendLiveDataClient interface {
+	Recv() (*LiveData, error)
 	grpc.ClientStream
 }
 
-type sportsbookServiceSendLiveOddsClient struct {
+type sportsbookServiceSendLiveDataClient struct {
 	grpc.ClientStream
 }
 
-func (x *sportsbookServiceSendLiveOddsClient) Recv() (*LiveOddsData, error) {
-	m := new(LiveOddsData)
+func (x *sportsbookServiceSendLiveDataClient) Recv() (*LiveData, error) {
+	m := new(LiveData)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (x *sportsbookServiceSendLiveScoreClient) Recv() (*LiveScoreData, error) {
 type SportsbookServiceServer interface {
 	// Sends a request to list all permatches available
 	ListPrematch(context.Context, *ListPrematchRequest) (*ListPrematchResponse, error)
-	SendLiveOdds(*LiveOddsRequest, SportsbookService_SendLiveOddsServer) error
+	SendLiveData(*LiveOddsRequest, SportsbookService_SendLiveDataServer) error
 	SendLiveScore(*LiveScoreRequest, SportsbookService_SendLiveScoreServer) error
 	mustEmbedUnimplementedSportsbookServiceServer()
 }
@@ -133,8 +133,8 @@ type UnimplementedSportsbookServiceServer struct {
 func (UnimplementedSportsbookServiceServer) ListPrematch(context.Context, *ListPrematchRequest) (*ListPrematchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPrematch not implemented")
 }
-func (UnimplementedSportsbookServiceServer) SendLiveOdds(*LiveOddsRequest, SportsbookService_SendLiveOddsServer) error {
-	return status.Errorf(codes.Unimplemented, "method SendLiveOdds not implemented")
+func (UnimplementedSportsbookServiceServer) SendLiveData(*LiveOddsRequest, SportsbookService_SendLiveDataServer) error {
+	return status.Errorf(codes.Unimplemented, "method SendLiveData not implemented")
 }
 func (UnimplementedSportsbookServiceServer) SendLiveScore(*LiveScoreRequest, SportsbookService_SendLiveScoreServer) error {
 	return status.Errorf(codes.Unimplemented, "method SendLiveScore not implemented")
@@ -170,24 +170,24 @@ func _SportsbookService_ListPrematch_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SportsbookService_SendLiveOdds_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _SportsbookService_SendLiveData_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(LiveOddsRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(SportsbookServiceServer).SendLiveOdds(m, &sportsbookServiceSendLiveOddsServer{stream})
+	return srv.(SportsbookServiceServer).SendLiveData(m, &sportsbookServiceSendLiveDataServer{stream})
 }
 
-type SportsbookService_SendLiveOddsServer interface {
-	Send(*LiveOddsData) error
+type SportsbookService_SendLiveDataServer interface {
+	Send(*LiveData) error
 	grpc.ServerStream
 }
 
-type sportsbookServiceSendLiveOddsServer struct {
+type sportsbookServiceSendLiveDataServer struct {
 	grpc.ServerStream
 }
 
-func (x *sportsbookServiceSendLiveOddsServer) Send(m *LiveOddsData) error {
+func (x *sportsbookServiceSendLiveDataServer) Send(m *LiveData) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -226,8 +226,8 @@ var SportsbookService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "SendLiveOdds",
-			Handler:       _SportsbookService_SendLiveOdds_Handler,
+			StreamName:    "SendLiveData",
+			Handler:       _SportsbookService_SendLiveData_Handler,
 			ServerStreams: true,
 		},
 		{

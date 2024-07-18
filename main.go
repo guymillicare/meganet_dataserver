@@ -1,14 +1,16 @@
 package main
 
 import (
-	"context"
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
+	"os/exec"
 	"sportsbook-backend/internal/config"
 	"sportsbook-backend/internal/database"
+	"sportsbook-backend/internal/datafeed"
 	"sportsbook-backend/internal/grpc"
 	pb "sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/repositories"
@@ -19,12 +21,10 @@ import (
 	"sportsbook-backend/pkg/queue"
 	"strings"
 
-	gRPC "google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/render"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func main() {
@@ -33,14 +33,6 @@ func main() {
 	database.InitPostgresDB(cfg)
 	database.InitRedis(cfg)
 	Preload()
-
-	conn, err := gRPC.Dial("your_grpc_server_address:port", gRPC.WithInsecure())
-	if err != nil {
-		log.Fatalf("Did not connect: %v", err)
-	}
-	defer conn.Close()
-	gRPCClient := pb.NewFeedServiceClient(conn)
-	subscribeToFeed(gRPCClient)
 
 	// Initialize RabbitMQ
 	rabbitMQ_odds, err := queue.NewRabbitMQ("live_odds_queue")
@@ -64,7 +56,7 @@ func main() {
 
 	scheduler.StartOddsAIScheduleCronJob(oddsAIClient, "50 * * * *") // Runs every 1 mins
 
-	oddsChannel := make(chan *pb.LiveOddsData, 100) // Buffer size of 100
+	oddsChannel := make(chan *pb.LiveData, 100) // Buffer size of 100
 	scoreChannel := make(chan *pb.LiveScoreData, 100)
 	// wg := &sync.WaitGroup{}
 
@@ -105,6 +97,7 @@ func main() {
 	// }
 
 	// Start the RabbitMQ consumer in a separate goroutine
+	go subscribeToFeed(rabbitMQ_odds, oddsChannel)
 	go consumeRabbitMQOdds(rabbitMQ_odds, oddsChannel)
 	go consumeRabbitMQScore(rabbitMQ_score, scoreChannel)
 
@@ -171,77 +164,31 @@ func SetupHttpHandler(APICorsAllowedOrigins string) *chi.Mux {
 // 	})
 // }
 
-func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveOddsData) {
+func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveData) {
 	msgs, err := rabbitMQ.Consume()
 	if err != nil {
 		log.Fatalf("Failed to consume messages: %v", err)
 	}
 
 	for d := range msgs {
-		var oddsData types.OddsStream
-		err := json.Unmarshal(d.Body, &oddsData)
+		// var oddsData types.OddsStream
+		var feedUpdateData datafeed.FeedUpdateData
+		err := protojson.Unmarshal(d.Body, &feedUpdateData)
 		if err != nil {
 			log.Printf("Error decoding JSON: %v", err)
 			continue
 		}
-
-		// Process the oddsData
-		for _, odds := range oddsData.Data {
-			sportEvent, _ := repositories.GetSportEventFromRedis(odds.GameId)
-			marketConstant, _ := repositories.GetMarketConstantFromRedis(odds.BetType)
-			if marketConstant != nil && sportEvent != nil {
-				active := true
-				if oddsData.Type == "odds" {
-					active = true
-				} else if oddsData.Type == "locked-odds" {
-					active = false
-				}
-				homeName := strings.Split(sportEvent.Name, " vs ")[0]
-				awayName := strings.Split(sportEvent.Name, " vs ")[1]
-				betName := odds.BetName
-				betName = strings.Replace(betName, homeName, "Home", -1)
-				betName = strings.Replace(betName, awayName, "Away", -1)
-
-				outcome := &types.OutcomeItem{
-					ReferenceId: odds.BetType + ":" + betName,
-					EventId:     sportEvent.Id,
-					MarketId:    marketConstant.Id,
-					Name:        betName,
-					Odds:        odds.BetPrice,
-					Active:      active,
-					// CreatedAt:   time.Now().UTC(),
-					// UpdatedAt:   time.Now().UTC(),
-				}
-				repositories.SaveOutcomeToRedis(outcome)
-
-				convertedOdds := &pb.OddsData{
-					BetName:         betName,
-					BetPoints:       odds.BetPoints,
-					BetPrice:        odds.BetPrice,
-					BetType:         odds.BetType,
-					GameId:          odds.GameId,
-					Id:              odds.Id,
-					IsLive:          odds.IsLive,
-					IsMain:          odds.IsMain,
-					League:          odds.League,
-					PlayerId:        odds.PlayerId,
-					Selection:       odds.Selection,
-					SelectionLine:   odds.SelectionLine,
-					SelectionPoints: odds.SelectionPoints,
-					Sport:           odds.Sport,
-					Sportsbook:      odds.Sportsbook,
-					Timestamp:       odds.Timestamp,
-				}
-
-				convertedOddsData := &pb.LiveOddsData{
-					EntryId: oddsData.EntryId,
-					Type:    oddsData.Type,
-					Data:    convertedOdds,
-				}
-				// Send live data to gRPC clients
-				oddsChannel <- convertedOddsData
-				// fmt.Printf("Consumer: %v\n", convertedOddsData)
-			}
+		switch data := feedUpdateData.Data.(type) {
+		case *datafeed.FeedUpdateData_Match:
+			fmt.Printf("MatchUpdate Data: %+v\n", data.Match)
+		case *datafeed.FeedUpdateData_Game:
+			fmt.Printf("GameUpdate Data: %+v\n", data.Game)
+		case *datafeed.FeedUpdateData_MatchResult_:
+			fmt.Printf("MatchResult Data: %+v\n", data.MatchResult)
+		case *datafeed.FeedUpdateData_Settlement_:
+			fmt.Printf("Settlement Data: %+v\n", data.Settlement)
+		default:
+			fmt.Println("Unknown data type", data)
 		}
 	}
 }
@@ -298,23 +245,72 @@ func consumeRabbitMQScore(rabbitMQ *queue.RabbitMQ, scoreChannel chan<- *pb.Live
 	}
 }
 
-func subscribeToFeed(gRPCClient pb.FeedServiceClient) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func subscribeToFeed(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveData) {
+	serverAddr := "demofeed.betapi.win:443"
+	serviceMethod := "datafeed.FeedService/SubscribeToFeed"
 
-	stream, err := gRPCClient.SubscribeToFeed(ctx, &emptypb.Empty{})
+	// Call the method
+	cmdArgs := []string{serverAddr, serviceMethod}
+
+	// Print the command to be executed
+	fmt.Printf("Running command: grpcurl %s\n", strings.Join(cmdArgs, " "))
+
+	// Create the command
+	callCmd := exec.Command("grpcurl", cmdArgs...)
+
+	// Get the stdout pipe to read the command's output
+	stdout, err := callCmd.StdoutPipe()
 	if err != nil {
-		log.Fatalf("Error on subscribe: %v", err)
+		log.Fatalf("Failed to get stdout pipe: %v", err)
 	}
 
-	for {
-		feedUpdate, err := stream.Recv()
-		if err == io.EOF {
-			break
+	// Start the command
+	if err := callCmd.Start(); err != nil {
+		log.Fatalf("Failed to start command: %v", err)
+	}
+
+	// Read the command's output in real-time
+	scanner := bufio.NewScanner(stdout)
+	var buffer bytes.Buffer
+	openBracesCount := 0
+	dataType := 0
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		buffer.WriteString(line)
+		buffer.WriteString("\n")
+
+		if dataType == 0 && line == "match" {
+			dataType = 1
 		}
-		if err != nil {
-			log.Fatalf("Error receiving feed update: %v", err)
+		if dataType == 0 && line == "game" {
+			dataType = 2
 		}
-		log.Printf("Feed update: %v", feedUpdate)
+		if dataType == 0 && line == "match_result" {
+			dataType = 3
+		}
+		if dataType == 0 && line == "settlement" {
+			dataType = 4
+		}
+
+		// Count opening and closing braces to detect the end of the JSON object
+		openBracesCount += strings.Count(line, "{")
+		openBracesCount -= strings.Count(line, "}")
+
+		if openBracesCount == 0 && buffer.Len() > 0 {
+			// var oddsData types.FeedUpdateData
+			jsonData := buffer.String()
+			// fmt.Println("Complete JSON:", jsonData)
+
+			rabbitMQ.Publish([]byte(jsonData))
+			// err := json.Unmarshal([]byte(jsonData), &oddsData)
+			// if err != nil {
+			// 	log.Printf("Failed to unmarshal JSON: %v", err)
+			// } else {
+			// 	fmt.Printf("Unmarshalled Data: %+v\n", oddsData.Game.ID)
+
+			// }
+			buffer.Reset()
+		}
 	}
 }
