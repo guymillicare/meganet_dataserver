@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/types"
-	"time"
 
 	"github.com/go-redis/redis"
 )
 
 func CountriesFindAll() ([]*types.CountryItem, error) {
 	var countries []*types.CountryItem
-	if err := database.DB.Table("countries").Find(&countries).Error; err != nil {
+	if err := database.DB.Table("countries").Where("countries.data_feed='huge_data'").Find(&countries).Error; err != nil {
 		if err.Error() == "record not found" {
 			return nil, nil
 		}
@@ -29,11 +28,7 @@ func saveCountryToRedis(ctx context.Context, country *types.CountryItem) error {
 	}
 
 	key := fmt.Sprintf("country:%s", country.Name)
-
-	// Define the expiration time as 90 days
-	expiration := 90 * 24 * time.Hour
-
-	err = database.RedisDB.Set(ctx, key, countryJSON, expiration).Err()
+	err = database.RedisDB.Set(ctx, key, countryJSON, 0).Err()
 	if err != nil {
 		return fmt.Errorf("saveCountryToRedis: error saving country to Redis: %v", err)
 	}

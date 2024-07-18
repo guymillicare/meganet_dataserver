@@ -112,8 +112,8 @@ func createOrUpdateOutcome(odds *proto.Odds, sportEvent *types.SportEventItem, m
 		Name:        oddsName,
 		Odds:        odds.Price,
 		Active:      true,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		// CreatedAt:   time.Now().UTC(),
+		// UpdatedAt:   time.Now().UTC(),
 	}
 	// 	if err := database.DB.Table("outcomes").Create(outcome).Error; err != nil {
 	// 		return fmt.Errorf("OutcomeCreate: %v", err)
@@ -162,7 +162,21 @@ func appendOutcomeToCache(ctx context.Context, cacheKey string, outcome *types.O
 	}
 
 	// Append new outcome to cached outcomes
-	cachedOutcomes = append(cachedOutcomes, outcome)
+	found := false
+
+	// Iterate over cachedOutcomes to find and update the matching reference_id
+	for i, o := range cachedOutcomes {
+		if o.ReferenceId == outcome.ReferenceId {
+			cachedOutcomes[i] = outcome
+			found = true
+			break
+		}
+	}
+
+	// If outcome was not found, append it to the cachedOutcomes slice
+	if !found {
+		cachedOutcomes = append(cachedOutcomes, outcome)
+	}
 
 	// Serialize updated outcomes
 	updatedOutcomesJSON, err := json.Marshal(cachedOutcomes)

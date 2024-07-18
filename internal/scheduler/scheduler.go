@@ -37,12 +37,30 @@ func StartPrematchCronJob(client *client.GamesClient, prematchData *grpc.Prematc
 func StartMatchStatusCronJob(client *client.GamesClient, prematchData *grpc.PrematchData, spec string) {
 	c := cron.New()
 	_, err := c.AddFunc(spec, func() {
-		log.Println("Fetching match status...")
+		// log.Println("Fetching match status...")
 
 		// Call the client method to fetch new games data.
 		client.FetchStatus()
 
-		log.Println("Match status successfully updated.")
+		// log.Println("Match status successfully updated.")
+	})
+	if err != nil {
+		log.Fatalf("Error setting up cron job: %v", err)
+	}
+
+	// Start the cron scheduler.
+	c.Start()
+}
+
+func StartOddsAIScheduleCronJob(client *client.GamesClient, spec string) {
+	c := cron.New()
+	_, err := c.AddFunc(spec, func() {
+		// log.Println("Fetching match status...")
+
+		// Call the client method to fetch new games data.
+		client.FetchOddsAISchedule()
+
+		// log.Println("Match status successfully updated.")
 	})
 	if err != nil {
 		log.Fatalf("Error setting up cron job: %v", err)

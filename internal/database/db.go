@@ -34,8 +34,8 @@ func InitPostgresDB(cfg *config.Config) {
 
 func InitRedis(cfg *config.Config) {
 	RedisDB = redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisHost, // Redis server address
-		Password: "",            // no password set
-		DB:       0,             // use default DB
+		Addr:     cfg.RedisHost,     // Redis server address
+		Password: cfg.RedisPassword, // no password set
+		DB:       0,                 // use default DB
 	})
 }

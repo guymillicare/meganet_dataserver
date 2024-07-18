@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/types"
 
+	"github.com/go-redis/redis"
 	"gorm.io/gorm/clause"
 )
 
@@ -22,13 +24,17 @@ func CreateCompetitorsBatch(competitors []*types.CompetitorItem) error {
 
 	if len(nonEmptyCompetitors) > 0 {
 		err := database.DB.Table("competitors").Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "name"}},
+			Columns:   []clause.Column{{Name: "reference_id"}},
 			DoNothing: true,
 		}).Create(&nonEmptyCompetitors).Error
 
 		if err != nil {
 			return fmt.Errorf("CompetitorCreateBatch: %v", err)
 		}
+	}
+	ctx := context.Background()
+	for _, competitor := range nonEmptyCompetitors {
+		saveCompetitorToRedis(ctx, competitor)
 	}
 
 	return nil
@@ -88,4 +94,68 @@ func PrepareCompetitors(BaseURL string, APIKey string, prematch *proto.Prematch)
 	}
 
 	return competitors
+}
+
+func CompetitorsFindAll() ([]*types.CompetitorItem, error) {
+	var competitors []*types.CompetitorItem
+	if err := database.DB.Table("competitors").Where("data_feed='huge_data'").Find(&competitors).Error; err != nil {
+		if err.Error() == "record not found" {
+			return nil, nil
+		}
+		return competitors, fmt.Errorf("CompetitorsFindAll: %v", err)
+	}
+
+	return competitors, nil
+
+}
+
+func saveCompetitorToRedis(ctx context.Context, competitor *types.CompetitorItem) error {
+	competitorJSON, err := json.Marshal(competitor)
+	if err != nil {
+		return fmt.Errorf("saveCompetitorToRedis: error marshaling competitor: %v", err)
+	}
+
+	key := fmt.Sprintf("competitor:%s", competitor.ReferenceId)
+
+	err = database.RedisDB.Set(ctx, key, competitorJSON, 0).Err()
+	if err != nil {
+		return fmt.Errorf("saveCompetitorToRedis: error saving competitor to Redis: %v", err)
+	}
+
+	return nil
+}
+
+func CompetitorsPreload() {
+	competitors, _ := CompetitorsFindAll()
+	ctx := context.Background()
+	for _, competitor := range competitors {
+		if err := saveCompetitorToRedis(ctx, competitor); err != nil {
+			fmt.Printf("saveSportEventToRedis: error saving sportEvent to Redis: %v\n", err)
+			continue
+		}
+	}
+}
+
+func GetCompetitorFromRedis(refId string) (*types.CompetitorItem, error) {
+	// Construct the key for the competitor item
+	ctx := context.Background()
+	key := fmt.Sprintf("competitor:%s", refId)
+
+	// Retrieve the competitor item from Redis
+	compeitorJSON, err := database.RedisDB.Get(ctx, key).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			// competitor item not found in Redis
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetCompetitorFromRedis: error fetching competitor item from Redis: %v", err)
+	}
+
+	// Deserialize the competitor item from JSON
+	var competitor types.CompetitorItem
+	if err := json.Unmarshal(compeitorJSON, &competitor); err != nil {
+		return nil, fmt.Errorf("GetCompetitorFromRedis: error unmarshaling competitor item: %v", err)
+	}
+
+	return &competitor, nil
 }

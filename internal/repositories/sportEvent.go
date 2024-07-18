@@ -8,7 +8,6 @@ import (
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/types"
 	"strings"
-	"time"
 
 	"github.com/go-redis/redis"
 	"gorm.io/gorm/clause"
@@ -25,7 +24,7 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 			fmt.Print("SPORT", prematch.Sport)
 			return nil, nil
 		}
-		sportEvent.SportId = sport.ReferenceId
+		sportEvent.SportId = sport.Id
 		if prematch.League != "" {
 			country := strings.Split(prematch.League, " - ")[0]
 			tournament := strings.Split(prematch.League, " - ")[0]
@@ -36,16 +35,20 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 			if countryItem == nil {
 				return sportEvent, fmt.Errorf("GetCountryFromRedis")
 			}
-			sportEvent.CountryId = countryItem.ReferenceId
-			tournamentItem, _ := GetTournamentFromRedis(tournament)
+			sportEvent.CountryId = countryItem.Id
+			tournamentItem, _ := GetTournamentFromRedis(sport.ReferenceId, countryItem.ReferenceId, tournament)
 			if tournamentItem == nil {
 				return sportEvent, fmt.Errorf("GetCountryFromRedis")
 			}
-			sportEvent.TournamentId = tournamentItem.ReferenceId
+			sportEvent.TournamentId = tournamentItem.Id
 		}
 		sportEvent.Name = prematch.HomeTeam + " vs " + prematch.AwayTeam
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
+		if prematch.Status == "live" {
+			sportEvent.Status = "Live"
+		}
+		sportEvent.Active = 1
 		sportEvent.StatsperformId = prematch.StatsperformId
 		if err := database.DB.Table("sport_events").Create(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("CreateSportEvent: %v", err)
@@ -53,6 +56,9 @@ func CreateOrUpdateSportEvent(prematch *proto.Prematch) (*types.SportEventItem, 
 	} else {
 		sportEvent.StartAt = prematch.StartDate
 		sportEvent.Status = prematch.Status
+		if prematch.Status == "live" {
+			sportEvent.Status = "Live"
+		}
 		sportEvent.StatsperformId = prematch.StatsperformId
 		if err := database.DB.Table("sport_events").Save(&sportEvent).Error; err != nil {
 			return sportEvent, fmt.Errorf("UpdateSportEvent: %v", err)
@@ -81,9 +87,9 @@ func UpdateSportEventStatus(event *types.SportEventItem) {
 func UpdateSportEvents(sportEvents []*types.SportEventItem) {
 	if err := database.DB.Table("sport_events").Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "reference_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"start_at", "status", "home_score", "away_score"}),
+		DoUpdates: clause.AssignmentColumns([]string{"start_at", "status", "home_score", "away_score", "round_info"}),
 	}).Create(&sportEvents).Error; err != nil {
-		fmt.Printf("UpdateSportEventStatus: %v\n", err)
+		fmt.Printf("UpdateSportEventStatuss: %v\n", err)
 	}
 	ctx := context.Background()
 	for _, sportEvent := range sportEvents {
@@ -114,11 +120,7 @@ func saveSportEventToRedis(ctx context.Context, sportEvent *types.SportEventItem
 	}
 
 	key := fmt.Sprintf("sportEvent:%s", sportEvent.ReferenceId)
-
-	// Define the expiration time as 90 days
-	expiration := 90 * 24 * time.Hour
-
-	err = database.RedisDB.Set(ctx, key, sportEventJSON, expiration).Err()
+	err = database.RedisDB.Set(ctx, key, sportEventJSON, 0).Err()
 	if err != nil {
 		return fmt.Errorf("saveSportEventToRedis: error saving sportEvent to Redis: %v", err)
 	}
@@ -178,7 +180,8 @@ func SportEventsFindByFilters(systemId int32, providerId int, status string, spo
 			"countries.name as country_name",
 			"tournaments.name as tournament_name",
 			"sport_events.home_score as home_score",
-			"sport_events.away_score as away_score").
+			"sport_events.away_score as away_score",
+			"sport_events.status as status").
 		Joins("LEFT JOIN sports ON sports.id = sport_events.sport_id").
 		Joins("LEFT JOIN countries ON countries.id = sport_events.country_id").
 		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id")

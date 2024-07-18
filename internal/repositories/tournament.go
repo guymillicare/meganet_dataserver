@@ -6,14 +6,22 @@ import (
 	"fmt"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/types"
-	"time"
 
 	"github.com/go-redis/redis"
 )
 
 func TournamentsFindAll() ([]*types.TournamentItem, error) {
 	var tournaments []*types.TournamentItem
-	if err := database.DB.Table("tournaments").Find(&tournaments).Error; err != nil {
+	if err := database.DB.Table("tournaments").
+		Select("tournaments.id as id",
+			"tournaments.reference_id as reference_id",
+			"tournaments.sport_id as sport_id",
+			"tournaments.country_id as country_id",
+			"countries.name as country_name",
+			"tournaments.name as name",
+			"tournaments.abbr as abbr",
+			"tournaments.order as order").
+		Joins("Left Join countries on tournaments.country_id=countries.reference_id ").Find(&tournaments).Error; err != nil {
 		if err.Error() == "record not found" {
 			return nil, nil
 		}
@@ -27,12 +35,8 @@ func saveTournamentToRedis(ctx context.Context, tournament *types.TournamentItem
 	if err != nil {
 		return fmt.Errorf("saveTournamentToRedis: error marshaling tournament: %v", err)
 	}
-	key := fmt.Sprintf("tournament:%s", tournament.Name)
-
-	// Define the expiration time as 90 days
-	expiration := 90 * 24 * time.Hour
-
-	err = database.RedisDB.Set(ctx, key, tournamentJSON, expiration).Err()
+	key := fmt.Sprintf("tournament:%s:%s:%s", tournament.SportId, tournament.CountryId, tournament.Name)
+	err = database.RedisDB.Set(ctx, key, tournamentJSON, 0).Err()
 	if err != nil {
 		return fmt.Errorf("saveTournamentToRedis: error saving tournament to Redis: %v", err)
 	}
@@ -50,10 +54,12 @@ func TournamentsPreload() {
 	}
 }
 
-func GetTournamentFromRedis(name string) (*types.TournamentItem, error) {
+func GetTournamentFromRedis(sportId string, countryId string, name string) (*types.TournamentItem, error) {
 	// Construct the key for the tournament item
 	ctx := context.Background()
-	key := fmt.Sprintf("tournament:%s", name)
+	// key := fmt.Sprintf("tournament:%s", name)
+
+	key := fmt.Sprintf("tournament:%s:%s:%s", sportId, countryId, name)
 
 	// Retrieve the tournament item from Redis
 	tournamentJSON, err := database.RedisDB.Get(ctx, key).Bytes()

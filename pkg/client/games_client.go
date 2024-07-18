@@ -1,14 +1,19 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
+	"sportsbook-backend/internal/types/requests"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -65,15 +70,21 @@ func (gc *GamesClient) FetchGames() (*proto.ListPrematchResponse, error) {
 				gameIDs = append(gameIDs, gameListResponse.Data[j].Id)
 			}
 
+			// oddsURL := fmt.Sprintf(
+			// 	"%s/api/v2/game-odds?key=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s",
+			// 	gc.BaseURL,
+			// 	gc.APIKey,
+			// 	"bet365",
+			// 	"bodog",
+			// 	"Pinnacle",
+			// 	"1XBet",
+			// 	"fanduel",
+			// )
 			oddsURL := fmt.Sprintf(
-				"%s/api/v2/game-odds?key=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s&sportsbook=%s",
+				"%s/api/v2/game-odds?key=%s&sportsbook=%s",
 				gc.BaseURL,
 				gc.APIKey,
-				"bet365",
-				"bodog",
-				"Pinnacle",
 				"1XBet",
-				"fanduel",
 			)
 			for _, gameID := range gameIDs {
 				oddsURL += fmt.Sprintf("&game_id=%s", gameID)
@@ -200,7 +211,7 @@ func (gc *GamesClient) FetchStatus() {
 				scoreStartDateMap[item.GameId] = item.StartDate
 				scoreHomeMap[item.GameId] = item.ScoreHomeTotal
 				scoreAwayMap[item.GameId] = item.ScoreAwayTotal
-				fmt.Println(item.GameId, item.Status, item.StartDate, item.ScoreHomeTotal, item.ScoreAwayTotal)
+				// fmt.Println(item.GameId, item.Status, item.StartDate, item.ScoreHomeTotal, item.ScoreAwayTotal)
 			}
 			mu.Unlock()
 		}(i)
@@ -227,4 +238,352 @@ func (gc *GamesClient) FetchStatus() {
 	}
 
 	repositories.UpdateSportEvents(allSportEvents)
+}
+
+func (gc *GamesClient) FetchOddsAISchedule() {
+	requestPayload := requests.MatchesRequest{
+		Status: []string{"not_started"},
+	}
+	payloadBytes, err := json.Marshal(requestPayload)
+	if err != nil {
+		fmt.Println("Error marshalling request payload:", err)
+		return
+	}
+
+	url := fmt.Sprintf("%s/matches", gc.BaseURL)
+	oddsUrl := fmt.Sprintf("%s/match-snapshots", gc.BaseURL)
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		fmt.Println("Error sending POST request:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var gameScheduleResponse types.OddsAIGameScheduleResponse
+	if err := json.NewDecoder(resp.Body).Decode(&gameScheduleResponse); err != nil {
+		fmt.Println("Error", err)
+		return
+	}
+	// Ensure saveCompetitors fully runs before proceeding
+	saveCompetitorsCompleted := make(chan struct{})
+	go func() {
+		saveCompetitors(gameScheduleResponse)
+		close(saveCompetitorsCompleted)
+	}()
+
+	// Wait for saveCompetitors to complete
+	<-saveCompetitorsCompleted
+
+	saveSportEventsCompleted := make(chan struct{})
+	go func() {
+		saveSportEvents(gameScheduleResponse, oddsUrl)
+		close(saveSportEventsCompleted)
+	}()
+
+	// Wait for saveSportEvents to complete
+	<-saveSportEventsCompleted
+}
+
+func saveCompetitors(gameScheduleResponse types.OddsAIGameScheduleResponse) {
+	sports := gameScheduleResponse.Data
+	var allCompetitors []*types.CompetitorItem
+	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent goroutines
+	var wg sync.WaitGroup
+
+	for _, sport := range sports {
+		sportName := strings.ToLower(sport.Name)
+		slug := strings.ReplaceAll(sportName, " ", "_")
+		sportItem, _ := repositories.GetSportFromRedis(slug)
+		infos := sport.SportCountries
+		for _, info := range infos {
+			country := info.Country
+			countryItem, _ := repositories.GetCountryFromRedis(country.Name)
+			tournaments := info.Tournaments
+			for _, tournament := range tournaments {
+				if countryItem == nil {
+					continue
+				}
+				tournamentItem, _ := repositories.GetTournamentFromRedis(sportItem.ReferenceId, countryItem.ReferenceId, tournament.Name)
+				matches := tournament.Matches
+				if tournamentItem == nil {
+					continue
+				}
+				for _, match := range matches {
+					wg.Add(1)
+					semaphore <- struct{}{}
+					go func(match types.Match, sportItem *types.SportItem, countryItem *types.CountryItem) {
+						defer wg.Done()
+						defer func() { <-semaphore }()
+						home := &types.CompetitorItem{
+							ReferenceId: strconv.Itoa(match.HomeTeam.ID),
+							CountryId:   countryItem.Id,
+							Name:        match.HomeTeam.Name,
+							SportId:     sportItem.ReferenceId,
+							DataFeed:    "huge_data",
+							CreatedAt:   time.Now(),
+							UpdatedAt:   time.Now(),
+						}
+						if match.HomeTeam.HasLogo {
+							home.Logo = fmt.Sprintf("https://cdn.betapi.win/cdn/logos/m/%s.png", strconv.Itoa(match.HomeTeam.ID))
+						}
+						allCompetitors = append(allCompetitors, home)
+
+						away := &types.CompetitorItem{
+							ReferenceId: strconv.Itoa(match.AwayTeam.ID),
+							CountryId:   countryItem.Id,
+							Name:        match.AwayTeam.Name,
+							SportId:     sportItem.ReferenceId,
+							DataFeed:    "huge_data",
+							CreatedAt:   time.Now(),
+							UpdatedAt:   time.Now(),
+						}
+						if match.AwayTeam.HasLogo {
+							away.Logo = fmt.Sprintf("https://cdn.betapi.win/cdn/logos/m/%s.png", strconv.Itoa(match.AwayTeam.ID))
+						}
+						allCompetitors = append(allCompetitors, away)
+					}(match, sportItem, countryItem)
+				}
+			}
+		}
+	}
+	wg.Wait()
+	err := repositories.CreateCompetitorsBatch(allCompetitors)
+	if err != nil {
+		fmt.Println("Error batch inserting competitors:", err)
+	}
+}
+
+func saveSportEvents(gameScheduleResponse types.OddsAIGameScheduleResponse, oddsUrl string) {
+	sports := gameScheduleResponse.Data
+	var allSportEvents []*types.SportEventItem
+	allMatchIds := make([]int, 0)
+	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent goroutines
+	var wg sync.WaitGroup
+
+	for _, sport := range sports {
+		sportName := strings.ToLower(sport.Name)
+		slug := strings.ReplaceAll(sportName, " ", "_")
+		sportItem, _ := repositories.GetSportFromRedis(slug)
+		infos := sport.SportCountries
+		for _, info := range infos {
+			country := info.Country
+			countryItem, _ := repositories.GetCountryFromRedis(country.Name)
+			tournaments := info.Tournaments
+			for _, tournament := range tournaments {
+				if countryItem == nil {
+					continue
+				}
+				tournamentItem, _ := repositories.GetTournamentFromRedis(sportItem.ReferenceId, countryItem.ReferenceId, tournament.Name)
+				matches := tournament.Matches
+				if tournamentItem == nil {
+					continue
+				}
+				for _, match := range matches {
+					wg.Add(1)
+					semaphore <- struct{}{}
+					go func(match types.Match, sportItem *types.SportItem, countryItem *types.CountryItem) {
+						defer wg.Done()
+						defer func() { <-semaphore }()
+						homeTeam, _ := repositories.GetCompetitorFromRedis(strconv.Itoa(match.HomeTeam.ID))
+						awayTeam, _ := repositories.GetCompetitorFromRedis(strconv.Itoa(match.AwayTeam.ID))
+
+						fmt.Println(match.HomeTeam.ID, match.HomeTeam.Name+" vs "+match.AwayTeam.Name, match.AwayTeam.ID)
+						if homeTeam != nil && awayTeam != nil {
+							sportEvent := &types.SportEventItem{
+								ProviderId:   2,
+								ReferenceId:  strconv.Itoa(match.ID),
+								SportId:      sportItem.Id,
+								CountryId:    countryItem.Id,
+								TournamentId: tournamentItem.Id,
+								Name:         match.HomeTeam.Name + " vs " + match.AwayTeam.Name,
+								HomeTeamId:   homeTeam.Id,
+								AwayTeamId:   awayTeam.Id,
+								Status:       "unplayed",
+								Active:       1,
+								DataFeed:     "huge_data",
+								CreatedAt:    time.Now(),
+								UpdatedAt:    time.Now(),
+							}
+							t := time.Unix(match.MatchDate, 0)
+							sportEvent.StartAt = t.Format("2006-01-02 15:04:05.999999-07")
+							if match.Status == "live" {
+								sportEvent.HomeScore = int32(match.MatchInfo.HomeScore)
+								sportEvent.AwayScore = int32(match.MatchInfo.AwayScore)
+							} else {
+								sportEvent.HomeScore = 0
+								sportEvent.AwayScore = 0
+							}
+							// sportEvent.RoundInfo = match.MatchInfo.ScoreInfo
+							allSportEvents = append(allSportEvents, sportEvent)
+							allMatchIds = append(allMatchIds, match.ID)
+						}
+					}(match, sportItem, countryItem)
+				}
+			}
+		}
+	}
+	wg.Wait()
+	repositories.UpdateSportEvents(allSportEvents)
+	getOdds(allMatchIds, oddsUrl)
+}
+
+func getOdds(allMatchIds []int, url string) {
+	const chunkSize = 30
+
+	for i := 0; i < len(allMatchIds); i += chunkSize {
+		end := i + chunkSize
+		if end > len(allMatchIds) {
+			end = len(allMatchIds)
+		}
+		chunk := allMatchIds[i:end]
+
+		jsonData, err := json.Marshal(chunk)
+		if err != nil {
+			fmt.Println("Error marshaling JSON:", err)
+			continue
+		}
+
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			fmt.Println("Error sending POST request:", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		var oddsResponse types.ResponseForOdds
+		if err := json.NewDecoder(resp.Body).Decode(&oddsResponse); err != nil {
+			fmt.Println("Error decoding response:", err)
+			continue
+		}
+
+		// Ensure saveCompetitors fully runs before proceeding
+		saveMarketconstantsCompleted := make(chan struct{})
+		go func() {
+			saveMarketconstants(oddsResponse)
+			close(saveMarketconstantsCompleted)
+		}()
+		// Wait for saveCompetitors to complete
+		<-saveMarketconstantsCompleted
+
+		// Ensure saveCompetitors fully runs before proceeding
+		saveSportMarketGroupsCompleted := make(chan struct{})
+		go func() {
+			saveSportMarketGroups(oddsResponse)
+			close(saveSportMarketGroupsCompleted)
+		}()
+		// Wait for saveCompetitors to complete
+		<-saveSportMarketGroupsCompleted
+
+		// SaveOutcomeToRedis() // Uncomment and implement if
+		data := oddsResponse.Data
+		for _, match := range data {
+			sportEventItem, _ := repositories.GetSportEventFromRedis(strconv.Itoa(int(match.ID)))
+			games := match.Games
+			for _, game := range games {
+				groupId := game.GameType
+				markets := game.Markets
+				for _, market := range markets {
+					// marketRefId := strconv.Itoa(market.TemplateID)
+					marketRefId := strconv.Itoa(groupId) + "-" + strconv.Itoa(market.TemplateID)
+					marketConstant, _ := repositories.GetMarketConstantFromRedis(marketRefId)
+					param := -1000000000000
+					hasParam := false
+					if market.Param != nil {
+						param = market.Param.Param
+						hasParam = true
+					}
+					odds := market.Odds
+					for _, odd := range odds {
+						outcomeConstant, _ := repositories.GetOutcomeConstantFromRedis(strconv.Itoa(int(odd.OutcomeID)))
+						odds := toAmericanOdds(odd.Value)
+						outcome := &types.OutcomeItem{
+							// ReferenceId: strconv.Itoa(int(odd.OutcomeID)),
+							ReferenceId: marketConstant.Description + ":" + outcomeConstant.Name,
+							EventId:     sportEventItem.Id,
+							MarketId:    marketConstant.Id,
+							Odds:        odds,
+							Name:        outcomeConstant.Name,
+							Active:      true,
+						}
+						if hasParam {
+							outcome.ReferenceId = marketConstant.Description + ":" + outcomeConstant.Name + ":" + fmt.Sprintf("%g", float64(param)/100.0)
+						}
+						repositories.SaveOutcomeToRedis(outcome)
+					}
+				}
+			}
+		}
+	}
+}
+
+func saveMarketconstants(oddsResponse types.ResponseForOdds) {
+	var marketConstants []*types.MarketConstantItem
+	data := oddsResponse.Data
+	for _, match := range data {
+		games := match.Games
+		for _, game := range games {
+			groupId := game.GameType
+			groupItem, _ := repositories.GetMarketGroupFromRedis(groupId)
+			markets := game.Markets
+			for _, market := range markets {
+				marketRefId := strconv.Itoa(market.TemplateID)
+				marketConstant, _ := repositories.GetMarketConstantFromRedis("1-" + marketRefId)
+				if groupId != 1 {
+					marketConstantItem := &types.MarketConstantItem{
+						ReferenceId:  strconv.Itoa(groupId) + "-" + marketRefId,
+						Description:  groupItem.MarketGroup + " " + marketConstant.Description,
+						Order:        int32(market.TemplateID),
+						IsTranslated: false,
+						DataFeed:     "huge_data",
+					}
+					marketConstants = append(marketConstants, marketConstantItem)
+				} else {
+					marketConstants = append(marketConstants, marketConstant)
+				}
+			}
+		}
+	}
+	repositories.UpdateMarketConstants(marketConstants)
+}
+
+func saveSportMarketGroups(oddsResponse types.ResponseForOdds) {
+	var sportMarketGroups []*types.SportMarketGroupItem
+	data := oddsResponse.Data
+	for _, match := range data {
+		games := match.Games
+		for _, game := range games {
+			groupId := game.GameType
+			groupItem, _ := repositories.GetMarketGroupFromRedis(groupId)
+			markets := game.Markets
+			for _, market := range markets {
+				marketRefId := strconv.Itoa(groupId) + "-" + strconv.Itoa(market.TemplateID)
+				marketConstant, _ := repositories.GetMarketConstantFromRedis(marketRefId)
+				sportMarketGroup := &types.SportMarketGroupItem{
+					GroupId:    int32(groupId),
+					MarketId:   marketConstant.Id,
+					GroupName:  groupItem.MarketGroup,
+					MarketName: marketConstant.Description,
+				}
+				sportMarketGroups = append(sportMarketGroups, sportMarketGroup)
+			}
+		}
+	}
+	repositories.UpdateSportMarketGroup(sportMarketGroups)
+}
+
+func toAmericanOdds(value int) float64 {
+	decimalOdds := float64(value) / 1000.0
+	if decimalOdds < 1.00 {
+		return 0
+	}
+
+	var americanOdds float64
+	if decimalOdds >= 2.00 {
+		americanOdds = (decimalOdds - 1) * 100
+	} else {
+		americanOdds = -100 / (decimalOdds - 1)
+	}
+
+	return math.Round(americanOdds*100) / 100 // Round to 2 decimal places
 }
