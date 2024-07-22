@@ -130,7 +130,7 @@ func CompetitorsPreload() {
 	ctx := context.Background()
 	for _, competitor := range competitors {
 		if err := saveCompetitorToRedis(ctx, competitor); err != nil {
-			fmt.Printf("saveSportEventToRedis: error saving sportEvent to Redis: %v\n", err)
+			fmt.Printf("CompetitorsPreload: error saving sportEvent to Redis: %v\n", err)
 			continue
 		}
 	}

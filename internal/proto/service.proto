@@ -105,13 +105,10 @@ message LiveData {
 
     message LiveOddsData {
         message OddsData {
-            string bet_name = 1;
-            double bet_points = 2;
-            double bet_price = 3;
-            string bet_type = 4;
-            string game_id = 5;
-            string id = 6;
-            string active = 7;
+            string reference_id = 1;
+            double bet_price = 2;
+            string game_id = 3;
+            bool active = 4;
         }
         string match_id = 1;
         EventStatus status = 2;

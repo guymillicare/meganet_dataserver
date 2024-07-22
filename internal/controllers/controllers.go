@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/repositories"
@@ -24,6 +25,33 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 	event, _ := repositories.GetSportEventFromRedis(eventRefId)
 	eventId := strconv.Itoa(int(event.Id))
 	outcomes, err := getOutcomes(eventId)
+	var marketGroups []*types.MarketGroupItem
+	addedMarketGroups := make(map[int]bool)
+	var collectionInfos []*types.CollectionInfoItem
+	addedCollectionInfos := make(map[int]bool)
+	for _, outcome := range outcomes {
+		groupId := int(outcome.GroupId)
+		collectionInfoId := outcome.CollectionInfoId
+		if _, exists := addedMarketGroups[groupId]; !exists {
+			marketGroup, err := repositories.GetMarketGroupFromRedis(groupId)
+			if err != nil {
+				log.Printf("Failed to get market group from Redis for groupId %d: %v", groupId, err)
+				continue
+			}
+			marketGroups = append(marketGroups, marketGroup)
+			addedMarketGroups[groupId] = true
+		}
+
+		if _, exists := addedCollectionInfos[int(collectionInfoId)]; !exists {
+			collectionInfo, err := repositories.GetCollectionInfoFromRedis(collectionInfoId)
+			if err != nil {
+				log.Printf("Failed to get market group from Redis for groupId %d: %v", groupId, err)
+				continue
+			}
+			collectionInfos = append(collectionInfos, collectionInfo)
+			addedCollectionInfos[int(collectionInfoId)] = true
+		}
+	}
 	if err != nil {
 		render.Status(r, http.StatusInternalServerError)
 		render.JSON(w, r, map[string]string{"error": fmt.Sprintf("Error fetching outcomes: %v", err)})
@@ -31,8 +59,10 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 	}
 
 	render.Render(w, r, &types.OutcomeListResponse{
-		SportEvent: event,
-		Outcome:    outcomes,
+		SportEvent:      event,
+		MarketGroups:    marketGroups,
+		CollectionInfos: collectionInfos,
+		Outcome:         outcomes,
 	})
 }
 

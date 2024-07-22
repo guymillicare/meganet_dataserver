@@ -108,6 +108,12 @@ type MarketGroupItem struct {
 	MarketGroup string `json:"market_group"`
 }
 
+type CollectionInfoItem struct {
+	Id          int32  `json:"id"`
+	ReferenceId string `json:"reference_id"`
+	Name        string `json:"name"`
+}
+
 type OutcomeConstantItem struct {
 	Id          int    `json:"id"`
 	ReferenceId string `json:"reference_id"`
@@ -127,12 +133,14 @@ type SportMarketGroupItem struct {
 
 type OutcomeItem struct {
 	// Id          int32     `json:"id"`
-	ReferenceId string  `json:"reference_id"`
-	EventId     int32   `json:"event_id"`
-	MarketId    int32   `json:"market_id"`
-	Name        string  `json:"name"`
-	Odds        float64 `json:"odds"`
-	Active      bool    `json:"active"`
+	ReferenceId      string  `json:"reference_id"`
+	EventId          int32   `json:"event_id"`
+	MarketId         int32   `json:"market_id"`
+	GroupId          int32   `json:"group_id"`
+	CollectionInfoId int32   `json:"collection_info_id"`
+	Name             string  `json:"name"`
+	Odds             float64 `json:"odds"`
+	Active           bool    `json:"active"`
 	// CreatedAt   time.Time `json:"created_at"`
 	// UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -191,8 +199,10 @@ func (rd *GenericResponse) Render(w http.ResponseWriter, r *http.Request) error 
 
 type OutcomeListResponse struct {
 	GenericResponse
-	SportEvent *SportEventItem `json:"sportEvent"`
-	Outcome    []*OutcomeItem  `json:"outcome"`
+	SportEvent      *SportEventItem       `json:"sportEvent"`
+	MarketGroups    []*MarketGroupItem    `json:"market_groups"`
+	CollectionInfos []*CollectionInfoItem `json:"collection_infos"`
+	Outcome         []*OutcomeItem        `json:"outcome"`
 }
 
 type SportEventListResponse struct {
@@ -494,7 +504,9 @@ type MarketForOdds struct {
 	Hash         int   `json:"hash"`
 	LastUpdate   int64 `json:"last_update"`
 	Param        *struct {
-		Param int `json: "param"`
+		Param *int `json: "param,omitempty"`
+		High  *int `json: "high,omitempty"`
+		Low   *int `json: "low,omitempty"`
 	} `json:"param,omitempty"`
 	Odds []OddForOdds `json:"odds"`
 }
@@ -508,4 +520,14 @@ type OddForOdds struct {
 	Blocked     bool  `json:"blocked"`
 	Sort        int   `json:"sort"`
 	Hash        int   `json:"hash"`
+}
+
+type GameInfo struct {
+	Tmr        bool    `json:"tmr,omitempty"`
+	Period     int     `json:"period,omitempty"`
+	AwayScore  int     `json:"awayScore"`
+	HomeScore  int     `json:"homeScore"`
+	ScoreInfo  *string `json:"scoreInfo,omitempty"`
+	TmrUpdate  int64   `json:"tmrUpdate,omitempty"`
+	TmrRunning bool    `json:"tmrRunning,omitempty"`
 }

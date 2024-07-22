@@ -30,11 +30,9 @@ type clientScoreStream struct {
 
 type server struct {
 	pb.UnimplementedSportsbookServiceServer
-	lock         sync.Mutex
-	oddsClients  map[string]*clientOddsStream
-	scoreClients map[string]*clientScoreStream
-	oddsChannel  chan *pb.LiveData
-	scoreChannel chan *pb.LiveScoreData
+	lock        sync.Mutex
+	oddsClients map[string]*clientOddsStream
+	oddsChannel chan *pb.LiveData
 }
 
 // Start a separate goroutine to handle broadcasting data to clients
@@ -58,7 +56,7 @@ func (s *server) broadcastOddsData() {
 	}
 }
 
-func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveDataServer) error {
+func (s *server) SendLiveData(req *pb.LiveOddsRequest, stream pb.SportsbookService_SendLiveDataServer) error {
 	clientID := fmt.Sprintf("%p", stream) // Unique client ID
 	stopChan := make(chan struct{})
 
@@ -81,60 +79,15 @@ func (s *server) SendLiveOdds(req *pb.LiveOddsRequest, stream pb.SportsbookServi
 	return nil
 }
 
-// Start a separate goroutine to handle broadcasting data to clients
-func (s *server) broadcastScoreData() {
-	for scoreData := range s.scoreChannel {
-		s.lock.Lock()
-		for id, client := range s.scoreClients {
-			select {
-			case <-client.stopChan:
-				// Client is done, remove it
-				delete(s.scoreClients, id)
-			default:
-				if err := client.stream.Send(scoreData); err != nil {
-					// Error sending to client, remove it
-					close(client.stopChan)
-					delete(s.scoreClients, id)
-				}
-			}
-		}
-		s.lock.Unlock()
-	}
-}
-
-func (s *server) SendLiveScore(req *pb.LiveScoreRequest, stream pb.SportsbookService_SendLiveScoreServer) error {
-	clientID := fmt.Sprintf("%p", stream) // Unique client ID
-	stopChan := make(chan struct{})
-
-	s.lock.Lock()
-	s.scoreClients[clientID] = &clientScoreStream{stream: stream, stopChan: stopChan}
-	s.lock.Unlock()
-
-	// Wait for client to disconnect
-	<-stream.Context().Done()
-
-	s.lock.Lock()
-	if s.scoreClients[clientID] != nil {
-		fmt.Print("client", clientID)
-		fmt.Print("length", len(s.scoreClients))
-		close(s.scoreClients[clientID].stopChan)
-		delete(s.scoreClients, clientID)
-	}
-	s.lock.Unlock()
-
-	return nil
-}
-func StartGRPCServer(port string, oddsChannel chan *pb.LiveData, scoreChannel chan *pb.LiveScoreData) {
+func StartGRPCServer(port string, oddsChannel chan *pb.LiveData) {
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer()
 	sportsbookServer := &server{
-		oddsClients:  make(map[string]*clientOddsStream),
-		scoreClients: make(map[string]*clientScoreStream),
-		oddsChannel:  oddsChannel,
-		scoreChannel: scoreChannel,
+		oddsClients: make(map[string]*clientOddsStream),
+		oddsChannel: oddsChannel,
 	}
 	pb.RegisterSportsbookServiceServer(grpcServer, sportsbookServer)
 	go func() {

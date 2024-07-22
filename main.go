@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -17,8 +18,10 @@ import (
 	"sportsbook-backend/internal/routes"
 	"sportsbook-backend/internal/scheduler"
 	"sportsbook-backend/internal/types"
+	"sportsbook-backend/internal/utils"
 	"sportsbook-backend/pkg/client"
 	"sportsbook-backend/pkg/queue"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -54,10 +57,9 @@ func main() {
 	// scheduler.StartPrematchCronJob(opticOddsClient, prematchData, "32 */2 * * *") // Runs every 3 hours
 	// scheduler.StartMatchStatusCronJob(opticOddsClient, prematchData, "* * * * *") // Runs every 1 mins
 
-	scheduler.StartOddsAIScheduleCronJob(oddsAIClient, "50 * * * *") // Runs every 1 mins
+	scheduler.StartOddsAIScheduleCronJob(oddsAIClient, "11 * * * *") // Runs every 1 mins
 
 	oddsChannel := make(chan *pb.LiveData, 100) // Buffer size of 100
-	scoreChannel := make(chan *pb.LiveScoreData, 100)
 	// wg := &sync.WaitGroup{}
 
 	// tournamnets, _ := repositories.TournamentsFindAll()
@@ -97,12 +99,12 @@ func main() {
 	// }
 
 	// Start the RabbitMQ consumer in a separate goroutine
-	go subscribeToFeed(rabbitMQ_odds, oddsChannel)
+	go subscribeToFeed(rabbitMQ_odds)
 	go consumeRabbitMQOdds(rabbitMQ_odds, oddsChannel)
-	go consumeRabbitMQScore(rabbitMQ_score, scoreChannel)
+	// go consumeRabbitMQScore(rabbitMQ_score, scoreChannel)
 
 	// Start the gRPC server
-	go grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel, scoreChannel)
+	go grpc.StartGRPCServer(cfg.GRPCPort, oddsChannel)
 	// Start the HTTP server
 	handler := SetupHttpHandler(cfg.APICorsAllowedOrigins)
 	port := 9000
@@ -127,6 +129,7 @@ func Preload() {
 	repositories.OutcomeConstantsPreload()
 	repositories.CompetitorsPreload()
 	repositories.MarketGroupsPreload()
+	repositories.CollectionInfosPreload()
 }
 
 func SetupHttpHandler(APICorsAllowedOrigins string) *chi.Mux {
@@ -170,6 +173,8 @@ func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveDa
 		log.Fatalf("Failed to consume messages: %v", err)
 	}
 
+	var convertedOddsData *pb.LiveData
+
 	for d := range msgs {
 		// var oddsData types.OddsStream
 		var feedUpdateData datafeed.FeedUpdateData
@@ -182,7 +187,12 @@ func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveDa
 		case *datafeed.FeedUpdateData_Match:
 			fmt.Printf("MatchUpdate Data: %+v\n", data.Match)
 		case *datafeed.FeedUpdateData_Game:
-			fmt.Printf("GameUpdate Data: %+v\n", data.Game)
+			// fmt.Printf("GameUpdate Data: %+v\n", data.Game)
+			// convertedOddsData = getGameUpdateData(data.Game)
+			convertedOddsData = &pb.LiveData{
+				Data: getGameUpdateData(data.Game),
+			}
+
 		case *datafeed.FeedUpdateData_MatchResult_:
 			fmt.Printf("MatchResult Data: %+v\n", data.MatchResult)
 		case *datafeed.FeedUpdateData_Settlement_:
@@ -190,86 +200,174 @@ func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveDa
 		default:
 			fmt.Println("Unknown data type", data)
 		}
+
+		oddsChannel <- convertedOddsData
 	}
 }
 
-func consumeRabbitMQScore(rabbitMQ *queue.RabbitMQ, scoreChannel chan<- *pb.LiveScoreData) {
-	msgs, err := rabbitMQ.Consume()
-	if err != nil {
-		log.Fatalf("Failed to consume messages: %v", err)
+func getGameUpdateData(game *datafeed.FeedUpdateData_GameUpdate) *pb.LiveData_Odds {
+	var convertedOdds []*pb.LiveData_LiveOddsData_OddsData
+	for _, market := range game.Markets {
+		marketRefId := strconv.Itoa(int(market.GroupId)) + "-" + strconv.Itoa(int(market.MarketTemplate))
+		marketConstant, _ := repositories.GetMarketConstantFromRedis(marketRefId)
+		param := 0
+		high := 0
+		low := 0
+		hasParam := false
+		hasOneParam := false
+		if market.Param != nil {
+			if market.Param.High != nil {
+				high = int(*market.Param.High)
+				low = int(*market.Param.Low)
+			} else {
+				param = int(*market.Param.Param)
+				hasOneParam = true
+			}
+			hasParam = true
+		}
+		for _, odd := range market.Odds {
+			outcomeConstant, _ := repositories.GetOutcomeConstantFromRedis(strconv.Itoa(int(odd.OutcomeId)))
+			if marketConstant == nil || outcomeConstant == nil {
+				continue
+			}
+			convertedOdd := &pb.LiveData_LiveOddsData_OddsData{
+				ReferenceId: marketConstant.Description + ";" + outcomeConstant.Name,
+				BetPrice:    utils.ToAmericanOdds(int(odd.Value)),
+				GameId:      strconv.Itoa(int(game.MatchId)),
+				Active:      odd.Active,
+			}
+			// fmt.Println("convertedOdd.ReferenceId", convertedOdd.ReferenceId)
+			if hasParam {
+				if hasOneParam {
+					convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%g", float64(param)/100.0) + ";" + outcomeConstant.Name
+				} else {
+					if high != 0 && low != 0 && high != 255 && low != 255 {
+						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d or %d", low, high) + ";" + outcomeConstant.Name
+					} else if high == 0 {
+						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("exact %d", low) + ";" + outcomeConstant.Name
+					} else if high == 255 {
+						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d and more", low) + ";" + outcomeConstant.Name
+					} else if low == 0 && high != 0 {
+						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d and less", high) + ";" + outcomeConstant.Name
+					}
+				}
+			}
+			convertedOdds = append(convertedOdds, convertedOdd)
+		}
 	}
 
-	for d := range msgs {
-		var scoreData types.ScoreStream
-		err := json.Unmarshal(d.Body, &scoreData)
+	var convertedOddsData *pb.LiveData_Odds = &pb.LiveData_Odds{
+		Odds: &pb.LiveData_LiveOddsData{
+			MatchId:  strconv.Itoa(int(game.MatchId)),
+			Status:   pb.EventStatus(game.Status),
+			GameInfo: game.GameInfo,
+			Odds:     convertedOdds,
+		},
+	}
+	sportEvent, _ := repositories.GetSportEventFromRedis(strconv.Itoa(int(game.MatchId)))
+	var decodedData []byte
+	if len(game.GameInfo) > 0 {
+		if game.GameInfo[0] == '{' {
+			decodedData = game.GameInfo
+		} else {
+			decodedData, _ = base64.StdEncoding.DecodeString(string(game.GameInfo))
+		}
+		var gameInfo types.GameInfo
+		err := json.Unmarshal(decodedData, &gameInfo)
 		if err != nil {
-			// log.Printf("Error decoding JSON: %v", err)
-			// continue
+			fmt.Println("Failed to unmarshal JSON: %v", err)
 		}
-
-		// convertedScore := &pb.ScoreData{
-		// 	GameId: scoreData.Data.GameID,
-		// }
-		convertedScore := &pb.ScoreData{
-			GameId: "2024",
+		if sportEvent != nil {
+			sportEvent.HomeScore = int32(gameInfo.HomeScore)
+			sportEvent.AwayScore = int32(gameInfo.AwayScore)
+			if gameInfo.ScoreInfo != nil {
+				sportEvent.RoundInfo = *gameInfo.ScoreInfo
+			}
 		}
-		// score := &pb.Score{
-		// 	Clock:             scoreData.Data.Score.Clock,
-		// 	ScoreAwayPeriod_1: scoreData.Data.Score.ScoreAwayPeriod1,
-		// 	// ScoreAwayPeriod_1Tiebreak: scoreData.Data.Score.ScoreAwayPeriod1Tiebreak,
-		// 	ScoreAwayPeriod_2: scoreData.Data.Score.ScoreAwayPeriod2,
-		// 	ScoreAwayTotal:    scoreData.Data.Score.ScoreAwayTotal,
-		// 	ScoreHomePeriod_1: scoreData.Data.Score.ScoreHomePeriod1,
-		// 	// ScoreHomePeriod_1Tiebreak: scoreData.Data.Score.ScoreHomePeriod1Tiebreak,
-		// 	ScoreHomePeriod_2: scoreData.Data.Score.ScoreHomePeriod2,
-		// 	ScoreHomeTotal:    scoreData.Data.Score.ScoreHomeTotal,
-		// }
-		score := &pb.Score{
-			Clock: "2024-1-1",
-		}
-		convertedScore.Score = score
-
-		// convertedScoreData := &pb.LiveScoreData{
-		// 	Data:    convertedScore,
-		// 	EntryId: scoreData.EntryId,
-		// }
-		convertedScoreData := &pb.LiveScoreData{
-			Data:    convertedScore,
-			EntryId: "scoreData.EntryId",
-		}
-		fmt.Printf("Consumer: %v\n", convertedScoreData)
-		// Send live data to gRPC clients
-		scoreChannel <- convertedScoreData
-		// 	}
-		// }
 	}
+
+	if sportEvent != nil {
+		if pb.EventStatus(game.Status) == pb.EventStatus_live {
+			sportEvent.Status = "Live"
+		} else if pb.EventStatus(game.Status) == pb.EventStatus_not_started {
+			sportEvent.Status = "unplayed"
+		} else {
+			sportEvent.Status = "Completed"
+		}
+
+		repositories.UpdateSportEventStatus(sportEvent)
+	}
+
+	return convertedOddsData
 }
 
-func subscribeToFeed(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveData) {
+// func consumeRabbitMQScore(rabbitMQ *queue.RabbitMQ, scoreChannel chan<- *pb.LiveScoreData) {
+// 	msgs, err := rabbitMQ.Consume()
+// 	if err != nil {
+// 		log.Fatalf("Failed to consume messages: %v", err)
+// 	}
+
+// 	for d := range msgs {
+// 		var scoreData types.ScoreStream
+// 		err := json.Unmarshal(d.Body, &scoreData)
+// 		if err != nil {
+// 			// log.Printf("Error decoding JSON: %v", err)
+// 			// continue
+// 		}
+
+// 		// convertedScore := &pb.ScoreData{
+// 		// 	GameId: scoreData.Data.GameID,
+// 		// }
+// 		convertedScore := &pb.ScoreData{
+// 			GameId: "2024",
+// 		}
+// 		// score := &pb.Score{
+// 		// 	Clock:             scoreData.Data.Score.Clock,
+// 		// 	ScoreAwayPeriod_1: scoreData.Data.Score.ScoreAwayPeriod1,
+// 		// 	// ScoreAwayPeriod_1Tiebreak: scoreData.Data.Score.ScoreAwayPeriod1Tiebreak,
+// 		// 	ScoreAwayPeriod_2: scoreData.Data.Score.ScoreAwayPeriod2,
+// 		// 	ScoreAwayTotal:    scoreData.Data.Score.ScoreAwayTotal,
+// 		// 	ScoreHomePeriod_1: scoreData.Data.Score.ScoreHomePeriod1,
+// 		// 	// ScoreHomePeriod_1Tiebreak: scoreData.Data.Score.ScoreHomePeriod1Tiebreak,
+// 		// 	ScoreHomePeriod_2: scoreData.Data.Score.ScoreHomePeriod2,
+// 		// 	ScoreHomeTotal:    scoreData.Data.Score.ScoreHomeTotal,
+// 		// }
+// 		score := &pb.Score{
+// 			Clock: "2024-1-1",
+// 		}
+// 		convertedScore.Score = score
+
+// 		// convertedScoreData := &pb.LiveScoreData{
+// 		// 	Data:    convertedScore,
+// 		// 	EntryId: scoreData.EntryId,
+// 		// }
+// 		convertedScoreData := &pb.LiveScoreData{
+// 			Data:    convertedScore,
+// 			EntryId: "scoreData.EntryId",
+// 		}
+// 		fmt.Printf("Consumer: %v\n", convertedScoreData)
+// 		// Send live data to gRPC clients
+// 		scoreChannel <- convertedScoreData
+// 		// 	}
+// 		// }
+// 	}
+// }
+
+func subscribeToFeed(rabbitMQ *queue.RabbitMQ) {
 	serverAddr := "demofeed.betapi.win:443"
 	serviceMethod := "datafeed.FeedService/SubscribeToFeed"
 
-	// Call the method
 	cmdArgs := []string{serverAddr, serviceMethod}
-
-	// Print the command to be executed
-	fmt.Printf("Running command: grpcurl %s\n", strings.Join(cmdArgs, " "))
-
-	// Create the command
 	callCmd := exec.Command("grpcurl", cmdArgs...)
-
-	// Get the stdout pipe to read the command's output
 	stdout, err := callCmd.StdoutPipe()
 	if err != nil {
 		log.Fatalf("Failed to get stdout pipe: %v", err)
 	}
 
-	// Start the command
 	if err := callCmd.Start(); err != nil {
 		log.Fatalf("Failed to start command: %v", err)
 	}
 
-	// Read the command's output in real-time
 	scanner := bufio.NewScanner(stdout)
 	var buffer bytes.Buffer
 	openBracesCount := 0
@@ -293,23 +391,12 @@ func subscribeToFeed(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveData) 
 			dataType = 4
 		}
 
-		// Count opening and closing braces to detect the end of the JSON object
 		openBracesCount += strings.Count(line, "{")
 		openBracesCount -= strings.Count(line, "}")
 
 		if openBracesCount == 0 && buffer.Len() > 0 {
-			// var oddsData types.FeedUpdateData
 			jsonData := buffer.String()
-			// fmt.Println("Complete JSON:", jsonData)
-
 			rabbitMQ.Publish([]byte(jsonData))
-			// err := json.Unmarshal([]byte(jsonData), &oddsData)
-			// if err != nil {
-			// 	log.Printf("Failed to unmarshal JSON: %v", err)
-			// } else {
-			// 	fmt.Printf("Unmarshalled Data: %+v\n", oddsData.Game.ID)
-
-			// }
 			buffer.Reset()
 		}
 	}

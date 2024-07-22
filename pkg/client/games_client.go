@@ -5,13 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/proto"
 	"sportsbook-backend/internal/repositories"
 	"sportsbook-backend/internal/types"
 	"sportsbook-backend/internal/types/requests"
+	"sportsbook-backend/internal/utils"
 	"strconv"
 	"strings"
 	"sync"
@@ -294,6 +294,9 @@ func saveCompetitors(gameScheduleResponse types.OddsAIGameScheduleResponse) {
 	for _, sport := range sports {
 		sportName := strings.ToLower(sport.Name)
 		slug := strings.ReplaceAll(sportName, " ", "_")
+		if slug == "football1" {
+			slug = "football"
+		}
 		sportItem, _ := repositories.GetSportFromRedis(slug)
 		infos := sport.SportCountries
 		for _, info := range infos {
@@ -304,6 +307,9 @@ func saveCompetitors(gameScheduleResponse types.OddsAIGameScheduleResponse) {
 				if countryItem == nil {
 					continue
 				}
+				fmt.Println("sportItem:", sportItem, slug)
+				fmt.Println("countryItem:", countryItem, country.Name)
+				// fmt.Println("tournament:", tournament)
 				tournamentItem, _ := repositories.GetTournamentFromRedis(sportItem.ReferenceId, countryItem.ReferenceId, tournament.Name)
 				matches := tournament.Matches
 				if tournamentItem == nil {
@@ -364,6 +370,9 @@ func saveSportEvents(gameScheduleResponse types.OddsAIGameScheduleResponse, odds
 	for _, sport := range sports {
 		sportName := strings.ToLower(sport.Name)
 		slug := strings.ReplaceAll(sportName, " ", "_")
+		if slug == "football1" {
+			slug = "football"
+		}
 		sportItem, _ := repositories.GetSportFromRedis(slug)
 		infos := sport.SportCountries
 		for _, info := range infos {
@@ -485,29 +494,53 @@ func getOdds(allMatchIds []int, url string) {
 				markets := game.Markets
 				for _, market := range markets {
 					// marketRefId := strconv.Itoa(market.TemplateID)
+					collectionInfo, _ := repositories.GetCollectionInfoFromRedis(int32(market.GroupID))
 					marketRefId := strconv.Itoa(groupId) + "-" + strconv.Itoa(market.TemplateID)
 					marketConstant, _ := repositories.GetMarketConstantFromRedis(marketRefId)
 					param := -1000000000000
+					high := -1000000000000
+					low := -1000000000000
 					hasParam := false
+					hasOneParam := false
 					if market.Param != nil {
-						param = market.Param.Param
+						if market.Param.High != nil {
+							high = *market.Param.High
+							low = *market.Param.Low
+						} else {
+							param = *market.Param.Param
+							hasOneParam = true
+						}
 						hasParam = true
 					}
 					odds := market.Odds
 					for _, odd := range odds {
 						outcomeConstant, _ := repositories.GetOutcomeConstantFromRedis(strconv.Itoa(int(odd.OutcomeID)))
-						odds := toAmericanOdds(odd.Value)
+						odds := utils.ToAmericanOdds(odd.Value)
 						outcome := &types.OutcomeItem{
 							// ReferenceId: strconv.Itoa(int(odd.OutcomeID)),
-							ReferenceId: marketConstant.Description + ":" + outcomeConstant.Name,
-							EventId:     sportEventItem.Id,
-							MarketId:    marketConstant.Id,
-							Odds:        odds,
-							Name:        outcomeConstant.Name,
-							Active:      true,
+							ReferenceId:      marketConstant.Description + ";" + outcomeConstant.Name,
+							EventId:          sportEventItem.Id,
+							MarketId:         marketConstant.Id,
+							GroupId:          int32(groupId),
+							CollectionInfoId: collectionInfo.Id,
+							Odds:             odds,
+							Name:             outcomeConstant.Name,
+							Active:           true,
 						}
 						if hasParam {
-							outcome.ReferenceId = marketConstant.Description + ":" + outcomeConstant.Name + ":" + fmt.Sprintf("%g", float64(param)/100.0)
+							if hasOneParam {
+								outcome.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%g", float64(param)/100.0) + ";" + outcomeConstant.Name
+							} else {
+								if high != 0 && low != 0 && high != 255 && low != 255 {
+									outcome.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d or %d", low, high) + ";" + outcomeConstant.Name
+								} else if high == 0 {
+									outcome.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("exact %d", low) + ";" + outcomeConstant.Name
+								} else if high == 255 {
+									outcome.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d and more", low) + ";" + outcomeConstant.Name
+								} else if low == 0 && high != 0 {
+									outcome.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d and less", high) + ";" + outcomeConstant.Name
+								}
+							}
 						}
 						repositories.SaveOutcomeToRedis(outcome)
 					}
@@ -570,20 +603,4 @@ func saveSportMarketGroups(oddsResponse types.ResponseForOdds) {
 		}
 	}
 	repositories.UpdateSportMarketGroup(sportMarketGroups)
-}
-
-func toAmericanOdds(value int) float64 {
-	decimalOdds := float64(value) / 1000.0
-	if decimalOdds < 1.00 {
-		return 0
-	}
-
-	var americanOdds float64
-	if decimalOdds >= 2.00 {
-		americanOdds = (decimalOdds - 1) * 100
-	} else {
-		americanOdds = -100 / (decimalOdds - 1)
-	}
-
-	return math.Round(americanOdds*100) / 100 // Round to 2 decimal places
 }
