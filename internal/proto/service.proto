@@ -106,9 +106,15 @@ message LiveData {
     message LiveOddsData {
         message OddsData {
             string reference_id = 1;
-            double bet_price = 2;
+            double odds = 2;
             string game_id = 3;
             bool active = 4;
+            int32 group_id = 5;
+            int32 collection_info_id = 6;
+            int32 market_id = 7;
+            int32 outcome_id = 8;
+            int32 outcome_order = 9;
+            string name = 10;
         }
         string match_id = 1;
         EventStatus status = 2;

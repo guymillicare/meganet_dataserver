@@ -22,14 +22,17 @@ import (
 
 func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 	eventRefId := chi.URLParam(r, "eventRefId")
-	event, _ := repositories.GetSportEventFromRedis(eventRefId)
+	// event, _ := repositories.GetSportEventFromRedis(eventRefId)
+	event, _ := repositories.SportEventFindByRefId(eventRefId)
 	eventId := strconv.Itoa(int(event.Id))
-	outcomes, err := getOutcomes(eventId)
-	var marketGroups []*types.MarketGroupItem
+	outcomes, err := GetOutcomes(eventId)
+	var activeOutcomes []*types.OutcomeItem = []*types.OutcomeItem{}
+	var marketGroups []*types.MarketGroupItem = []*types.MarketGroupItem{}
 	addedMarketGroups := make(map[int]bool)
-	var collectionInfos []*types.CollectionInfoItem
+	var collectionInfos []*types.CollectionInfoItem = []*types.CollectionInfoItem{}
 	addedCollectionInfos := make(map[int]bool)
 	for _, outcome := range outcomes {
+		// if outcome.Active {
 		groupId := int(outcome.GroupId)
 		collectionInfoId := outcome.CollectionInfoId
 		if _, exists := addedMarketGroups[groupId]; !exists {
@@ -51,6 +54,8 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 			collectionInfos = append(collectionInfos, collectionInfo)
 			addedCollectionInfos[int(collectionInfoId)] = true
 		}
+		activeOutcomes = append(activeOutcomes, outcome)
+		// }
 	}
 	if err != nil {
 		render.Status(r, http.StatusInternalServerError)
@@ -62,11 +67,11 @@ func GetOutcomesByEventId(w http.ResponseWriter, r *http.Request) {
 		SportEvent:      event,
 		MarketGroups:    marketGroups,
 		CollectionInfos: collectionInfos,
-		Outcome:         outcomes,
+		Outcome:         activeOutcomes,
 	})
 }
 
-func getOutcomes(eventId string) ([]*types.OutcomeItem, error) {
+func GetOutcomes(eventId string) ([]*types.OutcomeItem, error) {
 	// var err error
 
 	ctx := context.Background()
@@ -223,7 +228,13 @@ func GetSportEventsWithOdds(w http.ResponseWriter, r *http.Request) {
 	sportEvents, _ := repositories.SportEventsFindByFilters(62, 2, betType, int32(sportId), int32(countryId), int32(leagueId), offset, limit)
 	var results []*types.SportEventOddsItem
 	for _, event := range sportEvents {
-		outcomes, _ := getOutcomes(strconv.Itoa(int(event.Id)))
+		outcomes, _ := GetOutcomes(strconv.Itoa(int(event.Id)))
+		// var activeOutcomes []*types.OutcomeItem = []*types.OutcomeItem{}
+		// for _, outcome := range outcomes {
+		// 	if outcome.Active {
+		// 		activeOutcomes = append(activeOutcomes, outcome)
+		// 	}
+		// }
 		var entity types.SportEventOddsItem
 		entity.SportEvent = event
 		entity.Outcome = outcomes
@@ -245,10 +256,16 @@ func GetSportEventsWithLiveOdds(w http.ResponseWriter, r *http.Request) {
 	var results []*types.SportEventsOddsItem
 	for _, eventRefId := range req.EventIdList {
 		event, _ := repositories.GetSportEventFromRedis(eventRefId)
-		outcomes, _ := getOutcomes(strconv.Itoa(int(event.Id)))
+		outcomes, _ := GetOutcomes(strconv.Itoa(int(event.Id)))
+		var activeOutcomes []*types.OutcomeItem = []*types.OutcomeItem{}
+		for _, outcome := range outcomes {
+			if outcome.Active {
+				activeOutcomes = append(activeOutcomes, outcome)
+			}
+		}
 		var entity types.SportEventsOddsItem
 		entity.SportEvent = event
-		entity.Outcome = outcomes
+		entity.Outcome = activeOutcomes
 		results = append(results, &entity)
 	}
 	render.Render(w, r, &types.SportEventsListResponse{

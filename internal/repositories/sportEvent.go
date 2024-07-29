@@ -174,17 +174,32 @@ func SportEventsFindByFilters(systemId int32, providerId int, status string, spo
 		Table("sport_events").
 		Select("sport_events.id as id",
 			"sport_events.reference_id as reference_id",
+			"sport_events.sport_id as sport_id",
+			"sport_events.country_id as country_id",
+			"sport_events.tournament_id as tournament_id",
 			"sport_events.name as name",
 			"sport_events.start_at as start_at",
 			"sports.name as sport_name",
+			"sports.flag as sport_flag",
+			"sports.background as sport_background",
 			"countries.name as country_name",
+			"countries.flag as country_flag",
 			"tournaments.name as tournament_name",
+			"tournaments.flag as tournament_flag",
 			"sport_events.home_score as home_score",
 			"sport_events.away_score as away_score",
+			"home_competitors.logo as home_logo",
+			"away_competitors.logo as away_logo",
+			"sport_events.round_info as round_info",
+			"sport_events.tmr as tmr",
+			"sport_events.tmr_update as tmr_update",
+			"sport_events.tmr_running as tmr_running",
 			"sport_events.status as status").
 		Joins("LEFT JOIN sports ON sports.id = sport_events.sport_id").
 		Joins("LEFT JOIN countries ON countries.id = sport_events.country_id").
-		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id")
+		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id").
+		Joins("LEFT JOIN competitors AS home_competitors ON home_competitors.id = sport_events.home_team_id").
+		Joins("LEFT JOIN competitors AS away_competitors ON away_competitors.id = sport_events.away_team_id")
 	if systemId > 0 {
 		query = query.Joins("JOIN (SELECT DISTINCT sport_id FROM system_sports WHERE system_sports.system_id = ? AND system_sports.type = ?) AS filtered_system_sports ON filtered_system_sports.sport_id = sports.id", systemId, sport_type)
 	}
@@ -198,8 +213,52 @@ func SportEventsFindByFilters(systemId int32, providerId int, status string, spo
 	if tournamentId > 0 {
 		query = query.Where("sport_events.tournament_id=?", tournamentId)
 	}
-	if err := query.Offset(offset).Limit(limit).Find(&result).Order("created_at").Error; err != nil {
+	// if err := query.Offset(offset).Limit(limit).Find(&result).Order("created_at").Error; err != nil {
+	// 	return nil, fmt.Errorf("SportEventsFindByFilters: %v", err)
+	// }
+	if err := query.Find(&result).Order("created_at").Error; err != nil {
 		return nil, fmt.Errorf("SportEventsFindByFilters: %v", err)
+	}
+	return result, nil
+}
+
+func SportEventFindByRefId(refId string) (*types.SportEventFullItem, error) {
+	var result *types.SportEventFullItem
+
+	query := database.DB.
+		Table("sport_events").
+		Select("sport_events.id as id",
+			"sport_events.reference_id as reference_id",
+			"sport_events.name as name",
+			"sport_events.sport_id as sport_id",
+			"sport_events.country_id as country_id",
+			"sport_events.tournament_id as tournament_id",
+			"sport_events.start_at as start_at",
+			"sports.name as sport_name",
+			"sports.flag as sport_flag",
+			"sports.background as sport_background",
+			"countries.name as country_name",
+			"countries.flag as country_flag",
+			"tournaments.name as tournament_name",
+			"tournaments.flag as tournament_flag",
+			"sport_events.home_score as home_score",
+			"sport_events.away_score as away_score",
+			"home_competitors.logo as home_logo",
+			"away_competitors.logo as away_logo",
+			"sport_events.round_info as round_info",
+			"sport_events.tmr as tmr",
+			"sport_events.tmr_update as tmr_update",
+			"sport_events.tmr_running as tmr_running",
+			"sport_events.status as status").
+		Joins("LEFT JOIN sports ON sports.id = sport_events.sport_id").
+		Joins("LEFT JOIN countries ON countries.id = sport_events.country_id").
+		Joins("LEFT JOIN tournaments ON tournaments.id = sport_events.tournament_id").
+		Joins("LEFT JOIN competitors AS home_competitors ON home_competitors.id = sport_events.home_team_id").
+		Joins("LEFT JOIN competitors AS away_competitors ON away_competitors.id = sport_events.away_team_id").
+		Where("sport_events.reference_id=?", refId)
+
+	if err := query.First(&result).Error; err != nil {
+		return nil, fmt.Errorf("SportEventFindByRefId: %v", err)
 	}
 	return result, nil
 }

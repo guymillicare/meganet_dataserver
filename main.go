@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os/exec"
 	"sportsbook-backend/internal/config"
+	"sportsbook-backend/internal/controllers"
 	"sportsbook-backend/internal/database"
 	"sportsbook-backend/internal/datafeed"
 	"sportsbook-backend/internal/grpc"
@@ -23,6 +24,8 @@ import (
 	"sportsbook-backend/pkg/queue"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -57,7 +60,7 @@ func main() {
 	// scheduler.StartPrematchCronJob(opticOddsClient, prematchData, "32 */2 * * *") // Runs every 3 hours
 	// scheduler.StartMatchStatusCronJob(opticOddsClient, prematchData, "* * * * *") // Runs every 1 mins
 
-	scheduler.StartOddsAIScheduleCronJob(oddsAIClient, "11 * * * *") // Runs every 1 mins
+	scheduler.StartOddsAIScheduleCronJob(oddsAIClient, "36 * * * *") // Runs every 1 mins
 
 	oddsChannel := make(chan *pb.LiveData, 100) // Buffer size of 100
 	// wg := &sync.WaitGroup{}
@@ -110,10 +113,6 @@ func main() {
 	port := 9000
 	fmt.Printf("Using port %d\n", port)
 
-	// httpsCertFile := "cert.pem" // Replace with the path to your cert file
-	// httpsKeyFile := "key.pem"   // Replace with the path to your key file
-
-	// err = http.ListenAndServeTLS(fmt.Sprintf(":%d", port), httpsCertFile, httpsKeyFile, handler)
 	err = http.ListenAndServe(fmt.Sprintf(":%d", port), handler)
 	if err != nil {
 		log.Fatalf("Failed to start HTTPS server: %v", err)
@@ -133,7 +132,6 @@ func Preload() {
 }
 
 func SetupHttpHandler(APICorsAllowedOrigins string) *chi.Mux {
-	// fmt.Println(APICorsAllowedOrigins)
 	r := chi.NewRouter()
 
 	r.Use(render.SetContentType(render.ContentTypeJSON))
@@ -147,25 +145,10 @@ func SetupHttpHandler(APICorsAllowedOrigins string) *chi.Mux {
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
 
-	// Add this middleware for API key check
-	// r.Use(CheckAPIKeyMiddleware)
-
 	routes.SetupRouter(r)
 
 	return r
 }
-
-// func CheckAPIKeyMiddleware(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		apiKey := r.Header.Get("X-API-Key")
-// 		fmt.Printf("Origin: %s\n", r.Header.Get("Origin"))
-// 		if apiKey != "12345678" { // Replace with your actual API key
-// 			http.Error(w, "Forbidden", http.StatusForbidden)
-// 			return
-// 		}
-// 		next.ServeHTTP(w, r)
-// 	})
-// }
 
 func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveData) {
 	msgs, err := rabbitMQ.Consume()
@@ -173,48 +156,159 @@ func consumeRabbitMQOdds(rabbitMQ *queue.RabbitMQ, oddsChannel chan<- *pb.LiveDa
 		log.Fatalf("Failed to consume messages: %v", err)
 	}
 
-	var convertedOddsData *pb.LiveData
+	var wg sync.WaitGroup
 
-	for d := range msgs {
-		// var oddsData types.OddsStream
-		var feedUpdateData datafeed.FeedUpdateData
-		err := protojson.Unmarshal(d.Body, &feedUpdateData)
-		if err != nil {
-			log.Printf("Error decoding JSON: %v", err)
-			continue
-		}
-		switch data := feedUpdateData.Data.(type) {
-		case *datafeed.FeedUpdateData_Match:
-			fmt.Printf("MatchUpdate Data: %+v\n", data.Match)
-		case *datafeed.FeedUpdateData_Game:
-			// fmt.Printf("GameUpdate Data: %+v\n", data.Game)
-			// convertedOddsData = getGameUpdateData(data.Game)
-			convertedOddsData = &pb.LiveData{
-				Data: getGameUpdateData(data.Game),
+	// Use a worker pool to process messages concurrently
+	numWorkers := 50 // Adjust the number of workers as needed
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for d := range msgs {
+				var feedUpdateData datafeed.FeedUpdateData
+				err := protojson.Unmarshal(d.Body, &feedUpdateData)
+				if err != nil {
+					log.Printf("Error decoding JSON: %v", err)
+					continue
+				}
+				processFeedUpdateData(feedUpdateData, oddsChannel)
 			}
-
-		case *datafeed.FeedUpdateData_MatchResult_:
-			fmt.Printf("MatchResult Data: %+v\n", data.MatchResult)
-		case *datafeed.FeedUpdateData_Settlement_:
-			fmt.Printf("Settlement Data: %+v\n", data.Settlement)
-		default:
-			fmt.Println("Unknown data type", data)
-		}
-
-		oddsChannel <- convertedOddsData
+		}()
 	}
+
+	wg.Wait()
+}
+
+func processFeedUpdateData(feedUpdateData datafeed.FeedUpdateData, oddsChannel chan<- *pb.LiveData) {
+	var convertedData *pb.LiveData
+
+	switch data := feedUpdateData.Data.(type) {
+	case *datafeed.FeedUpdateData_Match:
+		convertedData = &pb.LiveData{
+			Data: getMatchUpdateData(data.Match),
+		}
+	case *datafeed.FeedUpdateData_Game:
+		convertedData = &pb.LiveData{
+			Data: getGameUpdateData(data.Game),
+		}
+	case *datafeed.FeedUpdateData_MatchResult_:
+		fmt.Printf("MatchResult Data: %+v\n", data.MatchResult)
+	case *datafeed.FeedUpdateData_Settlement_:
+		fmt.Printf("Settlement Data: %+v\n", data.Settlement)
+	default:
+		fmt.Println("Unknown data type", data)
+	}
+
+	if convertedData != nil {
+		oddsChannel <- convertedData
+	}
+}
+
+func getMatchUpdateData(match *datafeed.FeedUpdateData_MatchUpdate) *pb.LiveData_Match {
+	eventRefId := strconv.Itoa(int(match.Id))
+	sportEvent, _ := repositories.GetSportEventFromRedis(eventRefId)
+	if sportEvent == nil {
+		return nil
+	}
+	sportEvent.StartAt = time.Unix(match.MatchDate, 0).Format(time.RFC3339)
+	if match.Status == datafeed.EventStatus_live {
+		sportEvent.Status = "Live"
+	} else if match.Status == datafeed.EventStatus_not_started {
+		sportEvent.Status = "unplayed"
+	} else {
+		sportEvent.Status = "Completed"
+	}
+
+	var decodedData []byte
+	if len(match.MatchInfo) > 0 {
+		if match.MatchInfo[0] == '{' {
+			decodedData = match.MatchInfo
+		} else {
+			decodedData, _ = base64.StdEncoding.DecodeString(string(match.MatchInfo))
+		}
+		var gameInfo types.GameInfo
+		err := json.Unmarshal(decodedData, &gameInfo)
+		if err != nil {
+			fmt.Println("Failed to unmarshal JSON: %v", err)
+		}
+		if sportEvent != nil {
+			sportEvent.HomeScore = int32(*gameInfo.HomeScore)
+			sportEvent.AwayScore = int32(*gameInfo.AwayScore)
+			if gameInfo.ScoreInfo != nil {
+				sportEvent.RoundInfo = *gameInfo.ScoreInfo
+			}
+			if gameInfo.Tmr != nil {
+				sportEvent.Tmr = *gameInfo.Tmr
+			}
+			if gameInfo.TmrRunning != nil {
+				sportEvent.TmrRunning = *gameInfo.TmrRunning
+				sportEvent.Tmr = true
+			}
+			if gameInfo.TmrUpdate != nil {
+				sportEvent.TmrUpdate = int64(*gameInfo.TmrUpdate)
+				sportEvent.Tmr = true
+			}
+			if gameInfo.TmrSecond != nil {
+				sportEvent.TmrUpdate = time.Now().Unix() - int64(*gameInfo.TmrSecond)
+				sportEvent.Tmr = true
+			}
+		}
+	}
+
+	repositories.UpdateSportEventStatus(sportEvent)
+
+	status := pb.EventStatus_live
+	if match.Status == datafeed.EventStatus_live {
+		status = pb.EventStatus_live
+	} else if match.Status == datafeed.EventStatus_not_started {
+		status = pb.EventStatus_not_started
+	} else {
+		status = pb.EventStatus_not_active
+	}
+
+	var convertedMatchData *pb.LiveData_Match = &pb.LiveData_Match{
+		Match: &pb.LiveData_MatchUpdate{
+			MatchDate: match.MatchDate,
+			MatchInfo: match.MatchInfo,
+			Id:        match.Id,
+			Status:    status,
+		},
+	}
+
+	return convertedMatchData
 }
 
 func getGameUpdateData(game *datafeed.FeedUpdateData_GameUpdate) *pb.LiveData_Odds {
 	var convertedOdds []*pb.LiveData_LiveOddsData_OddsData
+	sportEvent, err := repositories.GetSportEventFromRedis(strconv.Itoa(int(game.MatchId)))
+	if err != nil || sportEvent == nil {
+		return nil
+	}
+
+	outcomes, err := controllers.GetOutcomes(strconv.Itoa(int(sportEvent.Id)))
+	if err != nil {
+		return nil
+	}
+
+	for _, outcome := range outcomes {
+		if outcome.GroupId == game.GameType {
+			outcome.Active = false
+			if err := repositories.SaveOutcomeToRedis(outcome); err != nil {
+				return nil
+			}
+		}
+	}
+
 	for _, market := range game.Markets {
-		marketRefId := strconv.Itoa(int(market.GroupId)) + "-" + strconv.Itoa(int(market.MarketTemplate))
-		marketConstant, _ := repositories.GetMarketConstantFromRedis(marketRefId)
-		param := 0
-		high := 0
-		low := 0
-		hasParam := false
-		hasOneParam := false
+		marketRefId := fmt.Sprintf("%d-%d", game.GameType, market.MarketTemplate)
+		marketConstant, err := repositories.GetMarketConstantFromRedis(marketRefId)
+		if err != nil || marketConstant == nil {
+			continue
+		}
+
+		var high, low, param int
+		var hasParam, hasOneParam bool
+
 		if market.Param != nil {
 			if market.Param.High != nil {
 				high = int(*market.Param.High)
@@ -225,38 +319,50 @@ func getGameUpdateData(game *datafeed.FeedUpdateData_GameUpdate) *pb.LiveData_Od
 			}
 			hasParam = true
 		}
+
 		for _, odd := range market.Odds {
-			outcomeConstant, _ := repositories.GetOutcomeConstantFromRedis(strconv.Itoa(int(odd.OutcomeId)))
-			if marketConstant == nil || outcomeConstant == nil {
+			outcomeConstant, err := repositories.GetOutcomeConstantFromRedis(strconv.Itoa(int(odd.OutcomeId)))
+			if err != nil || outcomeConstant == nil {
 				continue
 			}
-			convertedOdd := &pb.LiveData_LiveOddsData_OddsData{
-				ReferenceId: marketConstant.Description + ";" + outcomeConstant.Name,
-				BetPrice:    utils.ToAmericanOdds(int(odd.Value)),
-				GameId:      strconv.Itoa(int(game.MatchId)),
-				Active:      odd.Active,
+
+			referenceID := generateReferenceID(marketConstant.Description, outcomeConstant.Name, hasParam, hasOneParam, param, low, high)
+			collectionInfo, err := repositories.GetCollectionInfoFromRedis(int32(market.GroupId))
+			if err != nil {
+				continue
 			}
-			// fmt.Println("convertedOdd.ReferenceId", convertedOdd.ReferenceId)
-			if hasParam {
-				if hasOneParam {
-					convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%g", float64(param)/100.0) + ";" + outcomeConstant.Name
-				} else {
-					if high != 0 && low != 0 && high != 255 && low != 255 {
-						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d or %d", low, high) + ";" + outcomeConstant.Name
-					} else if high == 0 {
-						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("exact %d", low) + ";" + outcomeConstant.Name
-					} else if high == 255 {
-						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d and more", low) + ";" + outcomeConstant.Name
-					} else if low == 0 && high != 0 {
-						convertedOdd.ReferenceId = marketConstant.Description + "," + fmt.Sprintf("%d and less", high) + ";" + outcomeConstant.Name
-					}
-				}
+
+			outcome := &types.OutcomeItem{
+				ReferenceId:      referenceID,
+				EventId:          sportEvent.Id,
+				MarketId:         marketConstant.Id,
+				GroupId:          game.GameType,
+				CollectionInfoId: collectionInfo.Id,
+				Odds:             float64(utils.ToAmericanOdds(int(odd.Value))),
+				Name:             outcomeConstant.Name,
+				Active:           !odd.Blocked && odd.Active,
+				OutcomeId:        outcomeConstant.Id,
+				OutcomeOrder:     int(odd.OutcomeId),
 			}
-			convertedOdds = append(convertedOdds, convertedOdd)
+
+			if err := repositories.SaveOutcomeToRedis(outcome); err != nil {
+				continue
+			}
 		}
 	}
 
-	var convertedOddsData *pb.LiveData_Odds = &pb.LiveData_Odds{
+	updatedOutcomes, err := controllers.GetOutcomes(strconv.Itoa(int(sportEvent.Id)))
+	if err != nil {
+		return nil
+	}
+
+	for _, outcome := range updatedOutcomes {
+		if outcome.GroupId == game.GameType {
+			convertedOdds = append(convertedOdds, convertToPbOddsData(outcome, game.MatchId))
+		}
+	}
+
+	convertedOddsData := &pb.LiveData_Odds{
 		Odds: &pb.LiveData_LiveOddsData{
 			MatchId:  strconv.Itoa(int(game.MatchId)),
 			Status:   pb.EventStatus(game.Status),
@@ -264,7 +370,59 @@ func getGameUpdateData(game *datafeed.FeedUpdateData_GameUpdate) *pb.LiveData_Od
 			Odds:     convertedOdds,
 		},
 	}
-	sportEvent, _ := repositories.GetSportEventFromRedis(strconv.Itoa(int(game.MatchId)))
+
+	updateSportEventStatus(sportEvent, game)
+
+	return convertedOddsData
+}
+
+func generateReferenceID(description, name string, hasParam, hasOneParam bool, param, low, high int) string {
+	if !hasParam {
+		return fmt.Sprintf("%s;%s", description, name)
+	}
+
+	if hasOneParam {
+		return fmt.Sprintf("%s,%g;%s", description, float64(param)/100.0, name)
+	}
+
+	switch {
+	case high != 0 && low != 0 && high != 255 && low != 255:
+		return fmt.Sprintf("%s,%d or %d;%s", description, low, high, name)
+	case high == 0:
+		return fmt.Sprintf("%s,exact %d;%s", description, low, name)
+	case high == 255:
+		return fmt.Sprintf("%s,%d and more;%s", description, low, name)
+	case low == 0 && high != 0:
+		return fmt.Sprintf("%s,%d and less;%s", description, high, name)
+	default:
+		return fmt.Sprintf("%s;%s", description, name)
+	}
+}
+
+func convertToPbOddsData(outcome *types.OutcomeItem, matchId int32) *pb.LiveData_LiveOddsData_OddsData {
+	return &pb.LiveData_LiveOddsData_OddsData{
+		ReferenceId:      outcome.ReferenceId,
+		Odds:             outcome.Odds,
+		GameId:           strconv.Itoa(int(matchId)),
+		Active:           outcome.Active,
+		GroupId:          outcome.GroupId,
+		CollectionInfoId: outcome.CollectionInfoId,
+		MarketId:         outcome.MarketId,
+		OutcomeId:        int32(outcome.OutcomeId),
+		OutcomeOrder:     int32(outcome.OutcomeOrder),
+		Name:             outcome.Name,
+	}
+}
+
+func updateSportEventStatus(sportEvent *types.SportEventItem, game *datafeed.FeedUpdateData_GameUpdate) {
+	if pb.EventStatus(game.Status) == pb.EventStatus_live {
+		sportEvent.Status = "Live"
+	} else if pb.EventStatus(game.Status) == pb.EventStatus_not_started {
+		sportEvent.Status = "unplayed"
+	} else {
+		sportEvent.Status = "Completed"
+	}
+
 	var decodedData []byte
 	if len(game.GameInfo) > 0 {
 		if game.GameInfo[0] == '{' {
@@ -273,85 +431,36 @@ func getGameUpdateData(game *datafeed.FeedUpdateData_GameUpdate) *pb.LiveData_Od
 			decodedData, _ = base64.StdEncoding.DecodeString(string(game.GameInfo))
 		}
 		var gameInfo types.GameInfo
-		err := json.Unmarshal(decodedData, &gameInfo)
-		if err != nil {
+		if err := json.Unmarshal(decodedData, &gameInfo); err != nil {
 			fmt.Println("Failed to unmarshal JSON: %v", err)
 		}
-		if sportEvent != nil {
-			sportEvent.HomeScore = int32(gameInfo.HomeScore)
-			sportEvent.AwayScore = int32(gameInfo.AwayScore)
+
+		if game.GameType == 1 {
+			sportEvent.HomeScore = int32(*gameInfo.HomeScore)
+			sportEvent.AwayScore = int32(*gameInfo.AwayScore)
 			if gameInfo.ScoreInfo != nil {
 				sportEvent.RoundInfo = *gameInfo.ScoreInfo
 			}
 		}
-	}
-
-	if sportEvent != nil {
-		if pb.EventStatus(game.Status) == pb.EventStatus_live {
-			sportEvent.Status = "Live"
-		} else if pb.EventStatus(game.Status) == pb.EventStatus_not_started {
-			sportEvent.Status = "unplayed"
-		} else {
-			sportEvent.Status = "Completed"
+		if gameInfo.Tmr != nil {
+			sportEvent.Tmr = *gameInfo.Tmr
 		}
-
-		repositories.UpdateSportEventStatus(sportEvent)
+		if gameInfo.TmrRunning != nil {
+			sportEvent.TmrRunning = *gameInfo.TmrRunning
+			sportEvent.Tmr = true
+		}
+		if gameInfo.TmrUpdate != nil {
+			sportEvent.TmrUpdate = int64(*gameInfo.TmrUpdate)
+			sportEvent.Tmr = true
+		}
+		if gameInfo.TmrSecond != nil {
+			sportEvent.TmrUpdate = time.Now().Unix() - int64(*gameInfo.TmrSecond)
+			sportEvent.Tmr = true
+		}
 	}
 
-	return convertedOddsData
+	repositories.UpdateSportEventStatus(sportEvent)
 }
-
-// func consumeRabbitMQScore(rabbitMQ *queue.RabbitMQ, scoreChannel chan<- *pb.LiveScoreData) {
-// 	msgs, err := rabbitMQ.Consume()
-// 	if err != nil {
-// 		log.Fatalf("Failed to consume messages: %v", err)
-// 	}
-
-// 	for d := range msgs {
-// 		var scoreData types.ScoreStream
-// 		err := json.Unmarshal(d.Body, &scoreData)
-// 		if err != nil {
-// 			// log.Printf("Error decoding JSON: %v", err)
-// 			// continue
-// 		}
-
-// 		// convertedScore := &pb.ScoreData{
-// 		// 	GameId: scoreData.Data.GameID,
-// 		// }
-// 		convertedScore := &pb.ScoreData{
-// 			GameId: "2024",
-// 		}
-// 		// score := &pb.Score{
-// 		// 	Clock:             scoreData.Data.Score.Clock,
-// 		// 	ScoreAwayPeriod_1: scoreData.Data.Score.ScoreAwayPeriod1,
-// 		// 	// ScoreAwayPeriod_1Tiebreak: scoreData.Data.Score.ScoreAwayPeriod1Tiebreak,
-// 		// 	ScoreAwayPeriod_2: scoreData.Data.Score.ScoreAwayPeriod2,
-// 		// 	ScoreAwayTotal:    scoreData.Data.Score.ScoreAwayTotal,
-// 		// 	ScoreHomePeriod_1: scoreData.Data.Score.ScoreHomePeriod1,
-// 		// 	// ScoreHomePeriod_1Tiebreak: scoreData.Data.Score.ScoreHomePeriod1Tiebreak,
-// 		// 	ScoreHomePeriod_2: scoreData.Data.Score.ScoreHomePeriod2,
-// 		// 	ScoreHomeTotal:    scoreData.Data.Score.ScoreHomeTotal,
-// 		// }
-// 		score := &pb.Score{
-// 			Clock: "2024-1-1",
-// 		}
-// 		convertedScore.Score = score
-
-// 		// convertedScoreData := &pb.LiveScoreData{
-// 		// 	Data:    convertedScore,
-// 		// 	EntryId: scoreData.EntryId,
-// 		// }
-// 		convertedScoreData := &pb.LiveScoreData{
-// 			Data:    convertedScore,
-// 			EntryId: "scoreData.EntryId",
-// 		}
-// 		fmt.Printf("Consumer: %v\n", convertedScoreData)
-// 		// Send live data to gRPC clients
-// 		scoreChannel <- convertedScoreData
-// 		// 	}
-// 		// }
-// 	}
-// }
 
 func subscribeToFeed(rabbitMQ *queue.RabbitMQ) {
 	serverAddr := "demofeed.betapi.win:443"

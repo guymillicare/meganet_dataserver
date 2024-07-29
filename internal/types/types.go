@@ -71,6 +71,9 @@ type SportEventItem struct {
 	HomeTeamId     int32     `json:"home_team_id"`
 	AwayTeamId     int32     `json:"away_team_id"`
 	RoundInfo      string    `json:"round_info"`
+	Tmr            bool      `json:"tmr"`
+	TmrUpdate      int64     `json:"tmr_update"`
+	TmrRunning     bool      `json:"tmr_running"`
 	StatsperformId string    `json:"statsperform_id"`
 	DataFeed       string    `json:"data_feed"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -136,6 +139,8 @@ type OutcomeItem struct {
 	ReferenceId      string  `json:"reference_id"`
 	EventId          int32   `json:"event_id"`
 	MarketId         int32   `json:"market_id"`
+	OutcomeId        int     `json:"outcome_id"`
+	OutcomeOrder     int     `json:"outcome_order"`
 	GroupId          int32   `json:"group_id"`
 	CollectionInfoId int32   `json:"collection_info_id"`
 	Name             string  `json:"name"`
@@ -199,7 +204,7 @@ func (rd *GenericResponse) Render(w http.ResponseWriter, r *http.Request) error 
 
 type OutcomeListResponse struct {
 	GenericResponse
-	SportEvent      *SportEventItem       `json:"sportEvent"`
+	SportEvent      *SportEventFullItem   `json:"sportEvent"`
 	MarketGroups    []*MarketGroupItem    `json:"market_groups"`
 	CollectionInfos []*CollectionInfoItem `json:"collection_infos"`
 	Outcome         []*OutcomeItem        `json:"outcome"`
@@ -300,17 +305,30 @@ type GameScoreResponse struct {
 }
 
 type SportEventFullItem struct {
-	Id             int32     `json:"id"`
-	ReferenceId    string    `json:"reference_id"`
-	Name           string    `json:"name"`
-	StartAt        time.Time `json:"start_at"`
-	Active         bool      `json:"active"`
-	SportName      string    `json:"sport_name"`
-	CountryName    string    `json:"country_name"`
-	TournamentName string    `json:"tournament_name"`
-	HomeScore      int32     `json:"home_score"`
-	AwayScore      int32     `json:"away_score"`
-	Status         string    `json:"status"`
+	Id              int32     `json:"id"`
+	ReferenceId     string    `json:"reference_id"`
+	Name            string    `json:"name"`
+	SportId         int32     `json:"sport_id"`
+	CountryId       int32     `json:"country_id"`
+	TournamentId    int32     `json:"tournament_id"`
+	StartAt         time.Time `json:"start_at"`
+	Active          bool      `json:"active"`
+	SportName       string    `json:"sport_name"`
+	SportFlag       string    `json:"sport_flag"`
+	SportBackground string    `json:"sport_background"`
+	CountryName     string    `json:"country_name"`
+	CountryFlag     string    `json:"country_flag"`
+	TournamentName  string    `json:"tournament_name"`
+	TournamentFlag  string    `json:"tournament_flag"`
+	HomeScore       int32     `json:"home_score"`
+	AwayScore       int32     `json:"away_score"`
+	HomeLogo        string    `json:"home_logo"`
+	AwayLogo        string    `json:"away_logo"`
+	RoundInfo       string    `json:"round_info"`
+	Tmr             bool      `json:"tmr"`
+	TmrUpdate       int64     `json:"tmr_update"`
+	TmrRunning      bool      `json:"tmr_running"`
+	Status          string    `json:"status"`
 }
 
 type SportEventOddsItem struct {
@@ -398,15 +416,46 @@ type Team struct {
 }
 
 type MatchInfoItem struct {
-	Period     int    `json:"period,omitempty"`
-	AwayScore  int    `json:"awayScore"`
-	HomeScore  int    `json:"homeScore"`
-	ScoreInfo  string `json:"scoreInfo,omitempty"`
-	NotStarted bool   `json:"notStarted,omitempty"`
-	Tmr        bool   `json:"tmr,omitempty"`
-	TmrSecond  int    `json:"tmrSecond,omitempty"`
-	TmrUpdate  int    `json:"tmrUpdate,omitempty"`
-	TmrRunning bool   `json:"tmrRunning,omitempty"`
+	Tmr              *bool   `json:"tmr,omitempty"`
+	Top              *int    `json:"top,omitempty"`
+	Url              *string `json:"url,omitempty"`
+	Var              *bool   `json:"var,omitempty"`
+	Outs             *int    `json:"outs,omitempty"`
+	Balls            *int    `json:"balls,omitempty"`
+	Place            *int    `json:"place,omitempty"`
+	Round            *int    `json:"round,omitempty"`
+	Bottom           *int    `json:"bottom,omitempty"`
+	Format           *string `json:"format,omitempty"`
+	Period           *int    `json:"period,omitempty"`
+	Server           *string `json:"server,omitempty"`
+	RedCard          *string `json:"redCard,omitempty"`
+	Strikes          *int    `json:"strikes,omitempty"`
+	Timeout          *bool   `json:"timeout,omitempty"`
+	Finished         *bool   `json:"finished,omitempty"`
+	Overtime         *bool   `json:"overtime,omitempty"`
+	SetCount         *int    `json:"setCount,omitempty"`
+	AwayScore        *int    `json:"awayScore,omitempty"`
+	HomeScore        *int    `json:"homeScore,omitempty"`
+	PowerPlay        *string `json:"powerPlay,omitempty"`
+	ScoreInfo        *string `json:"scoreInfo,omitempty"`
+	Suspended        *bool   `json:"suspended,omitempty"`
+	TmrSecond        *int    `json:"tmrSecond,omitempty"`
+	TmrUpdate        *int    `json:"tmrUpdate,omitempty"`
+	FirstMatch       *string `json:"firstMatch,omitempty"`
+	NotStarted       *bool   `json:"notStarted,omitempty"`
+	TmrRunning       *bool   `json:"tmrRunning,omitempty"`
+	CornerSides      *string `json:"cornerSides,omitempty"`
+	PenaltyTeam      *string `json:"penaltyTeam,omitempty"`
+	AdditionalTime   *string `json:"additionalTime,omitempty"`
+	MedicalTimeout   *bool   `json:"medicalTimeout,omitempty"`
+	Break            *int    `json:"break,omitempty"`
+	SuperTieBreak    *bool   `json:"superTiebreak,omitempty"`
+	TieBreak         *bool   `json:"tieBreak,omitempty"`
+	TennisPoint      *string `json:"tennisPoint,omitempty"`
+	OvertimePeriod   *int    `json:"overtimePeriod,omitempty"`
+	ShootoutStatus   *string `json:"shootoutStatus,omitempty"`
+	PenaltyShootouts *bool   `json:"penaltyShootouts,omitempty"`
+	ExtraTime        *bool   `json:"extraTime,omitempty"`
 }
 
 type ResponseForOdds struct {
@@ -523,11 +572,44 @@ type OddForOdds struct {
 }
 
 type GameInfo struct {
-	Tmr        bool    `json:"tmr,omitempty"`
-	Period     int     `json:"period,omitempty"`
-	AwayScore  int     `json:"awayScore"`
-	HomeScore  int     `json:"homeScore"`
-	ScoreInfo  *string `json:"scoreInfo,omitempty"`
-	TmrUpdate  int64   `json:"tmrUpdate,omitempty"`
-	TmrRunning bool    `json:"tmrRunning,omitempty"`
+	Tmr              *bool   `json:"tmr,omitempty"`
+	Top              *int    `json:"top,omitempty"`
+	Url              *string `json:"url,omitempty"`
+	Var              *bool   `json:"var,omitempty"`
+	Outs             *int    `json:"outs,omitempty"`
+	Balls            *int    `json:"balls,omitempty"`
+	Place            *int    `json:"place,omitempty"`
+	Round            *int    `json:"round,omitempty"`
+	Bottom           *int    `json:"bottom,omitempty"`
+	Format           *string `json:"format,omitempty"`
+	Period           *int    `json:"period,omitempty"`
+	Server           *string `json:"server,omitempty"`
+	RedCard          *string `json:"redCard,omitempty"`
+	Strikes          *int    `json:"strikes,omitempty"`
+	Timeout          *bool   `json:"timeout,omitempty"`
+	Finished         *bool   `json:"finished,omitempty"`
+	Overtime         *bool   `json:"overtime,omitempty"`
+	SetCount         *int    `json:"setCount,omitempty"`
+	AwayScore        *int    `json:"awayScore,omitempty"`
+	HomeScore        *int    `json:"homeScore,omitempty"`
+	PowerPlay        *string `json:"powerPlay,omitempty"`
+	ScoreInfo        *string `json:"scoreInfo,omitempty"`
+	Suspended        *bool   `json:"suspended,omitempty"`
+	TmrSecond        *int    `json:"tmrSecond,omitempty"`
+	TmrUpdate        *int    `json:"tmrUpdate,omitempty"`
+	FirstMatch       *string `json:"firstMatch,omitempty"`
+	NotStarted       *bool   `json:"notStarted,omitempty"`
+	TmrRunning       *bool   `json:"tmrRunning,omitempty"`
+	CornerSides      *string `json:"cornerSides,omitempty"`
+	PenaltyTeam      *string `json:"penaltyTeam,omitempty"`
+	AdditionalTime   *string `json:"additionalTime,omitempty"`
+	MedicalTimeout   *bool   `json:"medicalTimeout,omitempty"`
+	Break            *int    `json:"break,omitempty"`
+	SuperTieBreak    *bool   `json:"superTiebreak,omitempty"`
+	TieBreak         *bool   `json:"tieBreak,omitempty"`
+	TennisPoint      *string `json:"tennisPoint,omitempty"`
+	OvertimePeriod   *int    `json:"overtimePeriod,omitempty"`
+	ShootoutStatus   *string `json:"shootoutStatus,omitempty"`
+	PenaltyShootouts *bool   `json:"penaltyShootouts,omitempty"`
+	ExtraTime        *bool   `json:"extraTime,omitempty"`
 }
